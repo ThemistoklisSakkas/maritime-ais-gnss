@@ -1,0 +1,21 @@
+# Data is large and re-downloadable: never commit it
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Notebooks checkpoints
+.ipynb_checkpoints/
+
+# OS / editors
+Thumbs.db
+.DS_Store
+.vscode/
+.idea/

@@ -1,0 +1,28 @@
+# Single source of truth for every tunable parameter.
+# Each phase adds its own section; nothing is hard-coded in src/.
+
+seed: 42
+
+paths:
+  raw: data/raw
+  reference: data/reference
+  interim: data/interim
+  processed: data/processed
+  figures: outputs/figures
+  tables: outputs/tables
+
+# AIS study period (Danish Maritime Authority daily files).
+# Availability is verified at the start of phase A1.
+dates:
+  start: "2025-06-02"
+  end: "2025-06-06"   # inclusive
+
+# Area of interest as [lon_min, lat_min, lon_max, lat_max] (WGS84).
+# "full" covers the DMA receiver footprint; "bornholm" is the zoom box
+# used for the GNSS interference analysis (A4).
+aoi:
+  full: [3.0, 53.5, 17.0, 58.5]
+  bornholm: [13.5, 54.5, 16.5, 56.0]
+
+# Projected CRS for metric computations (ETRS89 / UTM zone 32N).
+crs_metric: "EPSG:25832"
