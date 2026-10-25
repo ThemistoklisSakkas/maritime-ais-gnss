@@ -1,7 +1,8 @@
-"""Phase A1 orchestration: download -> extract -> stage -> clean -> trajectories.
+"""Part A orchestration, one `run_aX` function per phase.
 
-Every step is resumable: a day whose cleaned output and stats already exist is
-skipped unless force=True, so a crash on day 4 does not redo days 1-3.
+A1: download -> extract -> stage -> clean -> trajectories. Resumable: a day whose
+    cleaned output and stats already exist is skipped unless force=True.
+A2: zones -> gaps -> coverage -> classification; manoeuvre events.
 """
 
 from __future__ import annotations
@@ -13,10 +14,21 @@ from datetime import date
 import polars as pl
 
 from maritime.ais.clean import CleaningParams, clean_day, stage_csv
+from maritime.ais.dark import (
+    DarkParams,
+    ManeuverParams,
+    add_coverage,
+    classify_gaps,
+    coverage_table,
+    detect_maneuvers,
+    find_gaps,
+)
 from maritime.ais.download import download_day, extract_csv
 from maritime.ais.trajectories import build_trajectories
+from maritime.ais.vessels import vessel_registry
 from maritime.config import Config
-from maritime.plots import density_map
+from maritime.plots import dark_gap_map, density_map, gap_category_chart
+from maritime.zones import Zones, anchorage_cells, download_wpi, load_wpi
 
 
 def _log(msg: str) -> None:
@@ -78,3 +90,107 @@ def run_a1(cfg: Config, days: list[date] | None = None, force: bool = False) -> 
                       cfg.paths.figures / "a1_density.png",
                       title=f"Cleaned AIS fixes, {days[0]} (DMA)")
     _log(f"figure: {fig}")
+
+
+# ---------------------------------------------------------------- A2
+
+def build_zones(cfg: Config, points_paths: list) -> Zones:
+    """Ports (WPI) + data-driven anchorages; cached to data/processed/zones for A3/A4."""
+    zc = cfg.section("zones")
+    zdir = cfg.paths.processed / "zones"
+    zdir.mkdir(parents=True, exist_ok=True)
+    wpi = download_wpi(zc["wpi_url"], cfg.paths.reference / "wpi.csv")
+    ports = load_wpi(wpi, cfg.aoi["full"], zc["port_radius_km"])
+    cells = anchorage_cells(points_paths, zc["anchorage_cell_deg"],
+                            zc["anchorage_min_vessels"], zc["anchorage_statuses"])
+    ports.write_parquet(zdir / "ports.parquet")
+    cells.write_parquet(zdir / "anchorage_cells.parquet")
+    _log(f"zones: {ports.height} WPI ports, {cells.height} anchorage cells")
+    return Zones(ports, cells, zc["anchorage_cell_deg"])
+
+
+def run_a2(cfg: Config) -> None:
+    traj_dir = cfg.paths.processed / "trajectories"
+    points = sorted(traj_dir.glob("points_b*.parquet"))
+    segments = pl.read_parquet(traj_dir / "segments.parquet")
+    if "end_sog_kn" not in segments.columns:
+        raise SystemExit("segments.parquet is from an older A1 run: run `python -m maritime a1` "
+                         "first (days are skipped, only trajectories are rebuilt, ~1 min)")
+
+    dp = DarkParams.from_dict(cfg.section("dark"))
+    mp = ManeuverParams.from_dict(cfg.section("maneuvers"))
+    focus = cfg.section("dark")["focus_ship_types"]
+    out_dir = cfg.paths.processed / "dark"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    zones = build_zones(cfg, points)
+    registry = vessel_registry(sorted((cfg.paths.interim / "clean").glob("static_*.parquet")))
+    registry.write_parquet(cfg.paths.processed / "vessels.parquet")
+    _log(f"vessel registry: {registry.height} MMSIs with static data")
+
+    # ---- gaps
+    _log("computing empirical coverage map")
+    coverage = coverage_table(points, dp.coverage_cell_deg)
+    coverage.write_parquet(cfg.paths.processed / "coverage.parquet")
+    gaps = find_gaps(segments, dp.min_gap_h)
+    gaps = classify_gaps(add_coverage(gaps, coverage, dp), zones, dp)
+    gaps = gaps.join(registry.select("mmsi", "name", "ship_type"), on="mmsi", how="left")
+    gaps.write_parquet(out_dir / "gaps.parquet")
+    _log(f"gaps >= {dp.min_gap_h} h: {gaps.height}")
+
+    # ---- manoeuvres (per MMSI bucket to bound memory)
+    _log("detecting manoeuvres")
+    events = []
+    for p in points:
+        df = pl.read_parquet(p, columns=["mmsi", "seg", "ts", "lat", "lon", "sog", "cog"])
+        events.append(detect_maneuvers(df.drop_nulls(["sog", "cog"]), mp))
+    events = pl.concat(events)
+    events = events.with_columns(in_zone=pl.Series(zones.mask(events)))
+    events = events.join(registry.select("mmsi", "name", "ship_type"), on="mmsi", how="left")
+    events.write_parquet(out_dir / "maneuvers.parquet")
+
+    summary = summarize_a2(gaps, events, focus)
+    (cfg.paths.tables / "a2_summary.json").write_text(json.dumps(summary, indent=2))
+    _log(f"summary: {json.dumps(summary, indent=2)}")
+
+    dark = gaps.filter(pl.col("category") == "dark")
+    top = (dark.filter(pl.col("ship_type").is_in(focus)).sort("gap_h", descending=True)
+           .select("mmsi", "name", "ship_type", "moved_while_dark", "gap_start", "gap_end",
+                   "gap_h", "start_lat",
+                   "start_lon", "end_lat", "end_lon", "gap_dist_nm", "implied_speed_kn",
+                   "sog_before_kn", "sog_after_kn", "coverage_start", "coverage_end"))
+    top.head(50).write_csv(cfg.paths.tables / "a2_dark_gaps_top.csv")
+
+    figs = cfg.paths.figures
+    dark_gap_map(dark, coverage, dp.coverage_cell_deg, cfg.aoi["full"],
+                 figs / "a2_dark_gaps_map.png", focus)
+    gap_category_chart(gaps, figs / "a2_gap_categories.png")
+    _log(f"figures: {figs / 'a2_dark_gaps_map.png'}, {figs / 'a2_gap_categories.png'}")
+
+
+def summarize_a2(gaps: pl.DataFrame, events: pl.DataFrame, focus: list[str]) -> dict:
+    c = pl.col
+    dark = gaps.filter(c("category") == "dark")
+    dark_focus = dark.filter(c("ship_type").is_in(focus))
+    slowed = dark.filter((c("sog_before_kn") > 5)
+                         & (c("implied_speed_kn") < 0.5 * c("sog_before_kn")))
+    at_sea = events.filter(~c("in_zone"))
+    return {
+        "gaps_total": gaps.height,
+        "gaps_by_category": dict(gaps["category"].value_counts().iter_rows()),
+        "dark_gaps": dark.height,
+        "dark_vessels": dark["mmsi"].n_unique(),
+        "dark_gaps_focus_types": dark_focus.height,
+        "dark_vessels_focus_types": dark_focus["mmsi"].n_unique(),
+        "dark_gap_median_h": float(dark["gap_h"].median()) if dark.height else None,
+        "dark_gaps_moved_while_dark": int(dark["moved_while_dark"].sum()),
+        "dark_gaps_moved_focus_types": int(dark_focus["moved_while_dark"].sum()),
+        "dark_gaps_slowed_while_silent": slowed.height,
+        "dark_by_ship_type": {k or "unknown": v for k, v in
+                              dark["ship_type"].value_counts().sort("count", descending=True)
+                              .iter_rows()},
+        "maneuver_events_total": events.height,
+        "maneuver_events_at_sea": dict(at_sea["event"].value_counts().iter_rows()),
+        "maneuver_events_at_sea_focus_types": dict(
+            at_sea.filter(c("ship_type").is_in(focus))["event"].value_counts().iter_rows()),
+    }

@@ -4,7 +4,12 @@ import polars as pl
 import pytest
 
 from maritime.ais.clean import with_jump_flag
-from maritime.ais.trajectories import build_trajectories, segment, summarize_segments
+from maritime.ais.trajectories import (
+    bucket_expr,
+    build_trajectories,
+    segment,
+    summarize_segments,
+)
 from tests.test_clean import P, track
 
 
@@ -51,6 +56,16 @@ def test_summary_distance_and_speed():
     assert r["duration_h"] == pytest.approx(1.0)
     assert r["length_nm"] == pytest.approx(10.0, rel=1e-3)
     assert r["mean_track_speed_kn"] == pytest.approx(10.0, rel=1e-3)
+
+
+def test_bucket_hash_spreads_round_mmsis():
+    # 1600 MMSIs ending in 000: plain mmsi % 16 puts them all in buckets 0 and 8
+    df = pl.DataFrame({"mmsi": [(219_000 + i) * 1000 for i in range(1600)]})
+    naive = df.select(pl.col("mmsi") % 16)["mmsi"].unique().sort().to_list()
+    assert naive == [0, 8]
+    counts = df.select(bucket_expr(16).alias("b")).group_by("b").len()["len"]
+    assert counts.len() == 16
+    assert counts.max() < 2 * 1600 / 16          # no bucket more than 2x its fair share
 
 
 def test_build_trajectories_buckets(tmp_path):

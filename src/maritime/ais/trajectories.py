@@ -8,8 +8,8 @@ Segments are the unit later phases work on: A2 inspects what happens *between*
 segments (dark periods), A3/A4 work *within* them.
 
 Memory: all days are needed at once (voyages cross midnight), so vessels are
-processed in `n_buckets` groups by `mmsi % n_buckets`. Each bucket holds every
-fix of ~1/n of the fleet, which keeps peak RAM bounded on an 8 GB machine.
+processed in `n_buckets` groups (hashed MMSI, see `bucket_expr`). Each bucket holds
+every fix of ~1/n of the fleet, which keeps peak RAM bounded on an 8 GB machine.
 """
 
 from __future__ import annotations
@@ -22,6 +22,20 @@ from maritime.ais.clean import CleaningParams, with_jump_flag
 from maritime.geo import haversine_expr
 
 TRAJ_COLS = ["ts", "mmsi", "lat", "lon", "sog", "cog", "heading", "nav_status"]
+
+
+def bucket_expr(n_buckets: int) -> pl.Expr:
+    """Deterministic MMSI -> bucket assignment with an even spread.
+
+    Plain `mmsi % n` is badly skewed: many SOLAS ships have MMSIs ending in "000"
+    (a legacy of Inmarsat numbering), which are all divisible by 8, and these are also
+    the vessels that transmit most. Knuth's multiplicative hash fixes this, but only if we
+    keep the HIGH bits of the 32-bit product: its low bits depend only on the low bits of
+    the MMSI, so `% n` would reproduce the skew. Scaling by n / 2^32 takes the high bits.
+    mmsi < 1e9 and the constant < 2^32, so the product fits in Int64.
+    """
+    h = (pl.col("mmsi") * 2_654_435_761) % (1 << 32)
+    return (h * n_buckets) // (1 << 32)
 
 
 def segment(df: pl.DataFrame, max_gap_s: float) -> pl.DataFrame:
@@ -60,6 +74,8 @@ def summarize_segments(df: pl.DataFrame) -> pl.DataFrame:
             end_lat=c("lat").last(), end_lon=c("lon").last(),
             length_nm=c("dist_prev_m").sum() / 1852.0,
             mean_sog_kn=c("sog").mean(),
+            start_sog_kn=c("sog").drop_nulls().first(),
+            end_sog_kn=c("sog").drop_nulls().last(),
             starts_with_jump=c("jump").first(),
         )
         .with_columns(duration_h=(c("end") - c("start")).dt.total_seconds() / 3600.0)
@@ -82,7 +98,7 @@ def build_trajectories(clean_paths: list[Path], out_dir: Path, p: CleaningParams
     for b in range(n_buckets):
         df = (
             pl.scan_parquet(clean_paths)
-            .filter(pl.col("mmsi") % n_buckets == b)
+            .filter(bucket_expr(n_buckets) == b)
             .select(TRAJ_COLS)
             .collect(engine="streaming")
             .sort(["mmsi", "ts"])

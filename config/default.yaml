@@ -48,3 +48,34 @@ cleaning:
 trajectories:
   max_gap_min: 30      # a silence longer than this starts a new segment
   n_buckets: 16        # MMSI buckets for multi-day processing (memory bound)
+
+# ---------------------------------------------------------------- shared zones (A2-A4)
+zones:
+  wpi_url: "https://msi.nga.mil/api/publications/download?key=16920959/SFH00000/UpdatedPub150.csv&type=download"
+  port_radius_km:      # WPI positions are ~1' accurate; radius grows with harbour size
+    Large: 8
+    Medium: 5
+    Small: 3
+    Very Small: 2
+    default: 2
+  anchorage_cell_deg: 0.02     # ~2.2 km N-S x 1.3 km E-W at 55N
+  anchorage_min_vessels: 3     # distinct vessels anchored/moored in a cell to call it routine
+  anchorage_statuses: ["At anchor", "Moored"]
+
+# ---------------------------------------------------------------- A2
+dark:
+  min_gap_h: 2                 # silence at least this long
+  max_gap_speed_kn: 30         # crossing the gap faster than this = position jump, not silence
+  coverage_cell_deg: 0.1       # empirical receiver-coverage grid
+  coverage_min_vessels: 3      # other vessels heard in the cell in an hour = "covered"
+  coverage_min_fraction: 0.8   # share of gap hours that must be covered, at both ends
+  min_move_nm: 1.0             # reappearing at least this far away = moved while dark
+  focus_ship_types: ["Cargo", "Tanker"]   # headline numbers for commercial traffic
+
+maneuvers:
+  window_min: 10               # compare each fix with the state 10 minutes earlier
+  min_turn_deg: 150            # U-turn: course reversal of at least this much...
+  turn_min_sog_kn: 5           # ...while making way (COG is meaningless near 0 kn)
+  stop_from_kn: 8              # abrupt stop: from >= 8 kn...
+  stop_to_kn: 2                # ...to <= 2 kn within the window
+  merge_min: 30                # flagged fixes closer than this form one event

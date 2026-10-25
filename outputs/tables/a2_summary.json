@@ -1,0 +1,47 @@
+{
+  "gaps_total": 12095,
+  "gaps_by_category": {
+    "dark": 2268,
+    "low_coverage": 3246,
+    "position_jump": 1,
+    "port_or_anchorage": 6580
+  },
+  "dark_gaps": 2268,
+  "dark_vessels": 1111,
+  "dark_gaps_focus_types": 12,
+  "dark_vessels_focus_types": 10,
+  "dark_gap_median_h": 8.837083333333332,
+  "dark_gaps_moved_while_dark": 144,
+  "dark_gaps_moved_focus_types": 5,
+  "dark_gaps_slowed_while_silent": 121,
+  "dark_by_ship_type": {
+    "Sailing": 1035,
+    "Pleasure": 792,
+    "Fishing": 154,
+    "SAR": 77,
+    "Passenger": 56,
+    "unknown": 37,
+    "Pilot": 27,
+    "Other": 25,
+    "Military": 14,
+    "Law enforcement": 10,
+    "Cargo": 9,
+    "Dredging": 8,
+    "Diving": 6,
+    "HSC": 6,
+    "Tanker": 3,
+    "Spare 1": 3,
+    "Towing": 2,
+    "Port tender": 2,
+    "Tug": 2
+  },
+  "maneuver_events_total": 15414,
+  "maneuver_events_at_sea": {
+    "abrupt_stop": 4624,
+    "u_turn": 4469
+  },
+  "maneuver_events_at_sea_focus_types": {
+    "u_turn": 84,
+    "abrupt_stop": 194
+  }
+}

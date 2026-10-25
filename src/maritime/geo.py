@@ -53,6 +53,15 @@ def angle_diff_deg(a, b):
     return (np.asarray(a) - np.asarray(b) + 180.0) % 360.0 - 180.0
 
 
+def angle_diff_expr(a, b):
+    """Polars-expression version of angle_diff_deg.
+
+    The double modulo makes the result independent of how the engine signs a
+    negative remainder.
+    """
+    return ((a - b + 180.0) % 360.0 + 360.0) % 360.0 - 180.0
+
+
 @lru_cache(maxsize=8)
 def _transformer(crs_from: str, crs_to: str):
     from pyproj import Transformer

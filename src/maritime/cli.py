@@ -30,6 +30,12 @@ def cmd_a1(args: argparse.Namespace) -> None:
     run_a1(cfg, days=days, force=args.force)
 
 
+def cmd_a2(args: argparse.Namespace) -> None:
+    from maritime.ais.pipeline import run_a2
+
+    run_a2(load_config(args.config))
+
+
 def main(argv: list[str] | None = None) -> None:
     # Windows consoles default to cp1252, which cannot print polars' table borders
     sys.stdout.reconfigure(encoding="utf-8")
@@ -43,6 +49,9 @@ def main(argv: list[str] | None = None) -> None:
     a1.add_argument("--days", nargs="+", help="YYYY-MM-DD; default: all days in config")
     a1.add_argument("--force", action="store_true", help="redo days already processed")
     a1.set_defaults(func=cmd_a1)
+
+    sub.add_parser("a2", help="dark activity: AIS gaps and abrupt manoeuvres") \
+       .set_defaults(func=cmd_a2)
 
     args = parser.parse_args(argv)
     args.func(args)

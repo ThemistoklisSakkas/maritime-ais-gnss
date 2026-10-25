@@ -21,6 +21,22 @@ Known caveats, added as each phase is built.
 - The 50 kn implied-speed limit fits conventional ships; high-speed craft above 50 kn would be
   falsely flagged (rare in Danish waters).
 
+## A2 – Dark activity
+- "Coverage" is inferred from the data (other vessels heard in the same 0.1° cell and hour),
+  not from a receiver model. A class B transponder (2 W) can drop out where class A (12.5 W)
+  ships are still heard, so leisure/fishing gaps are biased towards "dark".
+- WPI lists ~144 ports in the AOI but not small marinas or fishing harbours. Most "dark" gaps of
+  pleasure and fishing craft are vessels that *stayed in place*: likely moored in an unlisted
+  harbour. We therefore report `moved_while_dark` separately and headline commercial types.
+- Anchorages are learned from ≥ 3 distinct anchored/moored vessels per cell over the 5 days;
+  a rarely used anchorage is missed, and a busy STS hub would be learned as "routine".
+- Manoeuvre events at offshore wind farms and construction sites (e.g. Horns Rev, North Sea) are
+  routine work, not suspicious; there is no polygon layer for such sites yet.
+- Coverage is only checked at the gap's end points. Inland waterways (Kiel Canal) can pass the
+  check because the canal entrances are well covered while the middle is not.
+- Gaps can only be detected inside the 5-day window; silences that start before or end after it
+  are invisible.
+
 ## Part B
 - The navigation solution is horizontal (2D, 8-state). Roll, pitch and heave are not modelled.
 - IMU errors are simulated from a parametric model, not taken from a real sensor log.

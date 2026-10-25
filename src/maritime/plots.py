@@ -10,6 +10,92 @@ import polars as pl
 from maritime.config import BBox
 
 
+def _plt():
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    return plt
+
+
+def dark_gap_map(gaps: pl.DataFrame, coverage: pl.DataFrame, cell_deg: float, bbox: BBox,
+                 out_png: Path, focus_types: list[str]) -> Path:
+    """Dark gaps drawn as start -> end lines over the empirical coverage map."""
+    from matplotlib.colors import LogNorm
+
+    plt = _plt()
+    lon_min, lat_min, lon_max, lat_max = bbox
+    cov = coverage.group_by(["cx", "cy"]).agg(pl.col("n").sum())
+    nx = int(round((lon_max - lon_min) / cell_deg))
+    ny = int(round((lat_max - lat_min) / cell_deg))
+    grid = np.full((ny, nx), np.nan)
+    ix = cov["cx"].to_numpy() - int(round(lon_min / cell_deg))
+    iy = cov["cy"].to_numpy() - int(round(lat_min / cell_deg))
+    ok = (ix >= 0) & (ix < nx) & (iy >= 0) & (iy < ny)
+    grid[iy[ok], ix[ok]] = cov["n"].to_numpy()[ok]
+
+    fig, ax = plt.subplots(figsize=(11, 8))
+    ax.imshow(grid, origin="lower", extent=[lon_min, lon_max, lat_min, lat_max],
+              cmap="Greys", norm=LogNorm(), alpha=0.6, aspect="auto")
+    focus = pl.col("ship_type").is_in(focus_types).fill_null(False)
+    moved = pl.col("moved_while_dark")
+    layers = (
+        (gaps.filter(~moved), "o", 10, "none", "tab:gray", "stayed in place (any type)"),
+        (gaps.filter(moved & ~focus), "o", 12, "tab:blue", "tab:blue", "moved, other / unknown"),
+        (gaps.filter(moved & focus), "D", 30, "tab:red", "tab:red",
+         f"moved, {' / '.join(focus_types)}"),
+    )
+    for sub, marker, size, face, edge, label in layers:
+        if face != "none":
+            for r in sub.iter_rows(named=True):
+                ax.annotate("", xy=(r["end_lon"], r["end_lat"]),
+                            xytext=(r["start_lon"], r["start_lat"]),
+                            arrowprops={"arrowstyle": "->", "color": edge, "lw": 0.9})
+        ax.scatter(sub["start_lon"], sub["start_lat"], s=size, marker=marker,
+                   facecolors=face, edgecolors=edge, label=f"{label} (n={sub.height})")
+    ax.set_aspect(1 / np.cos(np.radians((lat_min + lat_max) / 2)))
+    ax.set_xlim(lon_min, lon_max)
+    ax.set_ylim(lat_min, lat_max)
+    ax.set_xlabel("Longitude [deg]")
+    ax.set_ylabel("Latitude [deg]")
+    ax.set_title("Dark AIS gaps: marker = last fix before silence, arrow = to first fix after\n"
+                 "grey = vessel-hours received per cell (empirical coverage)")
+    ax.legend(loc="lower left")
+    fig.tight_layout()
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=150)
+    plt.close(fig)
+    return out_png
+
+
+def gap_category_chart(gaps: pl.DataFrame, out_png: Path) -> Path:
+    """Left: why gaps were explained away. Right: duration distribution of dark gaps."""
+    plt = _plt()
+    order = ["port_or_anchorage", "low_coverage", "position_jump", "dark"]
+    counts = gaps["category"].value_counts()
+    n = [int(counts.filter(pl.col("category") == c)["count"].sum()) for c in order]
+
+    fig, ax = plt.subplots(1, 2, figsize=(13, 5))
+    bars = ax[0].barh(order, n, color=["#999", "#bbb", "#e69f00", "#d62728"])
+    ax[0].bar_label(bars, padding=3)
+    ax[0].set_xlabel("AIS gaps >= threshold")
+    ax[0].set_title("Explanation assigned to each gap")
+    dark = gaps.filter(pl.col("category") == "dark")["gap_h"].to_numpy()
+    if dark.size:
+        ax[1].hist(dark, bins=np.logspace(np.log10(max(dark.min(), 1)), np.log10(dark.max()), 25),
+                   color="#d62728")
+        ax[1].set_xscale("log")
+    ax[1].set_xlabel("Gap duration [h] (log)")
+    ax[1].set_ylabel("Dark gaps")
+    ax[1].set_title("Duration of unexplained (dark) gaps")
+    fig.tight_layout()
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=150)
+    plt.close(fig)
+    return out_png
+
+
 def density_map(positions_path: Path, bbox: BBox, out_png: Path, title: str,
                 bins_per_deg: int = 40) -> Path:
     """Log-scaled 2D histogram of AIS fixes: a quick sanity check that the data draws the

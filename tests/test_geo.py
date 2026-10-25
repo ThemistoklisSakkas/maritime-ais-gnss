@@ -59,6 +59,18 @@ def test_angle_diff_wraps(a, b, expected):
     assert angle_diff_deg(a, b) == pytest.approx(expected)
 
 
+def test_polars_angle_diff_matches_numpy():
+    import polars as pl
+
+    from maritime.geo import angle_diff_expr
+
+    a = np.array([1.0, 359.0, 90.0, 180.0, 10.0, 350.0])
+    b = np.array([359.0, 1.0, 0.0, 0.0, 190.0, 170.0])
+    df = pl.DataFrame({"a": a, "b": b})
+    out = df.select(angle_diff_expr(pl.col("a"), pl.col("b"))).to_series().to_numpy()
+    assert np.allclose(out, angle_diff_deg(a, b))
+
+
 def test_knot_conversion():
     assert 10 * KNOT_MS == pytest.approx(5.1444, abs=1e-4)
 

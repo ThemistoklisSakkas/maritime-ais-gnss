@@ -38,7 +38,40 @@ on up to 12 vessels per hour out of ~150 present, and are absent before and afte
 interference event, but MMSI sharing has not been ruled out yet. To be tested in A4.
 
 ## A2 – Dark activity
-_pending_
+
+Threshold: silence ≥ 2 h. Zones: 144 WPI ports (radius by harbour size) + 418 learned
+anchorage cells (≥ 3 distinct anchored/moored vessels). Coverage: ≥ 3 other vessels heard in
+the same 0.1° cell during ≥ 80 % of the gap's interior hours, at both ends.
+Full output: `outputs/tables/a2_summary.json`, `outputs/tables/a2_dark_gaps_top.csv`.
+Runtime: 23 s for 53 M fixes (after A1).
+
+| Explanation assigned | Gaps | % |
+|---|---:|---:|
+| Port or anchorage | 6,580 | 54.4 % |
+| Low receiver coverage | 3,246 | 26.8 % |
+| Position jump (> 30 kn to bridge the gap) | 1 | < 0.1 % |
+| **Unexplained ("dark")** | **2,268** | **18.8 %** |
+| Total gaps ≥ 2 h | 12,095 | |
+
+- Dark gaps come from 1,111 vessels, but 1,827 of the 2,268 (81 %) are **sailing and
+  pleasure craft**, and 2,124 (94 %) **stayed in place**: most likely small craft in marinas
+  that WPI does not list. Only **144** dark gaps show the vessel **moving ≥ 1 NM while silent**.
+- Commercial traffic (Cargo/Tanker): **12 dark gaps from 10 vessels** in 5 days; 7 of them were
+  stationary (SOG 0 before and after), **5 moved while dark**.
+- Manual triage of the 5 commercial "moved while dark" gaps:
+  - 2 inside the **Kiel Canal** (54.2–54.4°N, 9.4–9.9°E) at 5–6 kn, the canal speed:
+    inland transit with poor Danish reception, likely benign → the coverage proxy failed here.
+  - 1 in the **Gothenburg approaches**, 2 NM in 2.8 h after slowing from 10 kn: waiting
+    just outside the WPI port radius, likely benign.
+  - **2 unexplained**: one continued 56 NM at its previous speed overnight between the
+    Øresund and Bornholm (good coverage at both ends); one **is the same MMSI that produced
+    358 position jumps east of Bornholm on 2025-06-05** (A1) — carried into A4.
+- Abrupt manoeuvres: 15,414 events in total, 9,093 outside ports/anchorages (4,469 U-turns,
+  4,624 abrupt stops); 278 by Cargo/Tanker. These cluster at offshore wind-farm and
+  construction sites (e.g. 55.6°N 7.6°E), i.e. mostly routine work.
+
+**Interview takeaway:** an automatic rule cut 12,095 gaps to 5 commercial candidates; human
+review of 5 cases took minutes and left 2. The detector is a triage tool, not a verdict.
 
 ## A3 – Ship-to-ship encounters
 _pending_
