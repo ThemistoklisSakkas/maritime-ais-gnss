@@ -30,6 +30,19 @@ def test_haversine_zero_and_vectorised():
     assert np.allclose(d, 0.0)
 
 
+def test_polars_haversine_matches_numpy():
+    import polars as pl
+
+    from maritime.geo import haversine_expr
+
+    rng = np.random.default_rng(0)
+    lat1, lat2 = rng.uniform(53, 59, (2, 100))
+    lon1, lon2 = rng.uniform(3, 17, (2, 100))
+    df = pl.DataFrame({"a": lat1, "b": lon1, "c": lat2, "d": lon2})
+    d_pl = df.select(haversine_expr(pl.col("a"), pl.col("b"), pl.col("c"), pl.col("d")))
+    assert np.allclose(d_pl.to_series().to_numpy(), haversine_m(lat1, lon1, lat2, lon2))
+
+
 @pytest.mark.parametrize(
     "lat2, lon2, expected",
     [(1.0, 0.0, 0.0), (0.0, 1.0, 90.0), (-1.0, 0.0, 180.0), (0.0, -1.0, 270.0)],

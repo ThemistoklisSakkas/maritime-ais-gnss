@@ -1,0 +1,8 @@
+{
+  "n_points": 52962017,
+  "n_vessels": 8950,
+  "n_segments": 43383,
+  "n_segments_from_jump": 2697,
+  "median_segment_duration_h": 0.7497222222222222,
+  "total_track_nm": 742882.6980094885
+}

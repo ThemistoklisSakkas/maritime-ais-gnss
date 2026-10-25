@@ -27,7 +27,7 @@ written to `data/` (git-ignored); figures and tables to `outputs/`.
 | Phase | Description | Status |
 |---|---|---|
 | 0 | Scaffold, config, geo utilities | done |
-| A1 | Ingestion, cleaning, trajectories | – |
+| A1 | Ingestion, cleaning, trajectories | done |
 | A2 | Dark activity | – |
 | A3 | Ship-to-ship encounters | – |
 | A4 | GNSS interference indicators | – |

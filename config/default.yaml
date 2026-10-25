@@ -26,3 +26,25 @@ aoi:
 
 # Projected CRS for metric computations (ETRS89 / UTM zone 32N).
 crs_metric: "EPSG:25832"
+
+# ---------------------------------------------------------------- A1
+download:
+  base_url: "http://aisdata.ais.dk.s3.eu-central-1.amazonaws.com"
+  keep_zip: true    # ~650 MB/day; lets us re-run without re-downloading
+  keep_csv: false   # ~3.3 GB/day; deleted once staged to Parquet
+
+cleaning:
+  mobile_types: ["Class A", "Class B"]
+  # Ship-station MMSI range: MID (first 3 digits) 201..775
+  mmsi_min: 201000000
+  mmsi_max: 775999999
+  max_sog_kn: 60       # reported SOG above this is treated as invalid
+  max_speed_kn: 50     # implied speed above this between two fixes = impossible move
+  min_jump_m: 200      # ...but only if the fixes are also > 200 m apart (GNSS noise floor)
+  spike_passes: 3      # iterations of isolated-spike removal
+  stale_min_sog_kn: 1.0  # identical repeated position while SOG > this = stale re-stamped fix
+  low_res_tol: 0.001     # tolerance (tenths of arc-minute) for msg-27 coarse-grid detection
+
+trajectories:
+  max_gap_min: 30      # a silence longer than this starts a new segment
+  n_buckets: 16        # MMSI buckets for multi-day processing (memory bound)

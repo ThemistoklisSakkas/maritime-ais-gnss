@@ -27,6 +27,15 @@ def haversine_m(lat1, lon1, lat2, lon2):
     return 2 * EARTH_RADIUS_M * np.arcsin(np.sqrt(np.clip(a, 0.0, 1.0)))
 
 
+def haversine_expr(lat1, lon1, lat2, lon2):
+    """Polars-expression version of haversine_m (same formula, runs inside the query engine)."""
+    import polars as pl
+
+    lat1, lon1, lat2, lon2 = (e.radians() for e in (lat1, lon1, lat2, lon2))
+    a = ((lat2 - lat1) / 2).sin() ** 2 + lat1.cos() * lat2.cos() * ((lon2 - lon1) / 2).sin() ** 2
+    return 2 * EARTH_RADIUS_M * a.clip(0.0, 1.0).sqrt().arcsin().cast(pl.Float64)
+
+
 def initial_bearing_deg(lat1, lon1, lat2, lon2):
     """Initial true bearing from point 1 to point 2, in [0, 360)."""
     lat1, lon1, lat2, lon2 = map(np.radians, (lat1, lon1, lat2, lon2))
