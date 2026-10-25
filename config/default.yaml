@@ -79,3 +79,18 @@ maneuvers:
   stop_from_kn: 8              # abrupt stop: from >= 8 kn...
   stop_to_kn: 2                # ...to <= 2 kn within the window
   merge_min: 30                # flagged fixes closer than this form one event
+
+# ---------------------------------------------------------------- A3
+sts:
+  bin_min: 5                   # one mean position per vessel per 5 minutes
+  max_sog_kn: 3                # both vessels slower than this...
+  max_dist_m: 500              # ...closer than this...
+  min_duration_h: 1            # ...for at least this long
+  max_missing_bins: 2          # tolerate up to 10 min without a joint observation
+  zone_cell_deg: 0.005         # grid for the fast port test (~550 x 320 m cells)
+  exclude_ship_types: ["Sailing", "Pleasure"]   # raft up legitimately; not STS candidates
+  service_ship_types: ["Tug", "Pilot", "SAR", "Port tender", "Law enforcement", "Military",
+                       "Dredging", "Diving", "Towing", "Towing long/wide", "Anti-pollution",
+                       "Medical"]
+  dark_window_h: 12            # dark gap of either vessel within +-12 h = "dark nearby"
+  example_max_h: 12            # README example figure: pick an operation-length encounter

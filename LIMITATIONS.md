@@ -37,6 +37,17 @@ Known caveats, added as each phase is built.
 - Gaps can only be detected inside the 5-day window; silences that start before or end after it
   are invisible.
 
+## A3 – Ship-to-ship encounters
+- The rule finds *proximity*, not cargo transfer. Legitimate operations (bunkering at the Skagen
+  anchorage, tugs and pilots alongside, pair trawling, lay-up berths) match it too; the pair
+  class and dark-gap context are triage aids, not proof.
+- Small harbours missing from WPI (e.g. Skive, Snaptun, Dagebüll) and ships moored together
+  produce multi-day "encounters". No coastline test is applied yet (land polygons arrive in A4).
+- Distances are between GNSS antennas, not hulls: two ships alongside show ~20–60 m.
+- Port proximity is tested at the centre of 0.005° cells (≤ ~300 m error).
+- Sailing and pleasure craft are excluded up front; an STS involving a vessel that broadcasts a
+  false ship type of that kind would be missed.
+
 ## Part B
 - The navigation solution is horizontal (2D, 8-state). Roll, pitch and heave are not modelled.
 - IMU errors are simulated from a parametric model, not taken from a real sensor log.

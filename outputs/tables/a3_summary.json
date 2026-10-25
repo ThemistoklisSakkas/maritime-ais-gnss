@@ -1,0 +1,21 @@
+{
+  "slow_vessel_bins": 3353302,
+  "removed_in_zone": 2229444,
+  "removed_by_type": 639493,
+  "candidate_bins": 484365,
+  "n_time_bins": 1440,
+  "max_candidates_in_one_bin": 421,
+  "close_pair_bins": 242968,
+  "encounters": 2534,
+  "encounters_by_class": {
+    "other": 441,
+    "fishing_pair": 727,
+    "cargo_tanker_pair": 15,
+    "service_involved": 1351
+  },
+  "encounters_with_dark_nearby": 696,
+  "focus_encounters_with_dark_nearby": 0,
+  "median_duration_h": 3.0833333333333335,
+  "pairing_seconds": 1.4,
+  "total_seconds": 7.5
+}

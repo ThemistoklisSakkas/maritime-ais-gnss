@@ -3,13 +3,14 @@
 A1: download -> extract -> stage -> clean -> trajectories. Resumable: a day whose
     cleaned output and stats already exist is skipped unless force=True.
 A2: zones -> gaps -> coverage -> classification; manoeuvre events.
+A3: slow binned positions -> KD-tree pairs -> encounter episodes.
 """
 
 from __future__ import annotations
 
 import json
 import time
-from datetime import date
+from datetime import date, timedelta
 
 import polars as pl
 
@@ -24,10 +25,25 @@ from maritime.ais.dark import (
     find_gaps,
 )
 from maritime.ais.download import download_day, extract_csv
+from maritime.ais.encounters import (
+    STSParams,
+    build_episodes,
+    classify_pairs,
+    close_pairs,
+    drop_routine,
+    flag_dark_context,
+    load_candidates,
+)
 from maritime.ais.trajectories import build_trajectories
 from maritime.ais.vessels import vessel_registry
 from maritime.config import Config
-from maritime.plots import dark_gap_map, density_map, gap_category_chart
+from maritime.plots import (
+    dark_gap_map,
+    density_map,
+    encounter_detail,
+    encounter_map,
+    gap_category_chart,
+)
 from maritime.zones import Zones, anchorage_cells, download_wpi, load_wpi
 
 
@@ -194,3 +210,77 @@ def summarize_a2(gaps: pl.DataFrame, events: pl.DataFrame, focus: list[str]) -> 
         "maneuver_events_at_sea_focus_types": dict(
             at_sea.filter(c("ship_type").is_in(focus))["event"].value_counts().iter_rows()),
     }
+
+
+# ---------------------------------------------------------------- A3
+
+def run_a3(cfg: Config) -> None:
+    proc = cfg.paths.processed
+    points = sorted((proc / "trajectories").glob("points_b*.parquet"))
+    if not (proc / "zones" / "ports.parquet").exists():
+        raise SystemExit("zones not found: run `python -m maritime a2` first")
+
+    p = STSParams.from_dict(cfg.section("sts"))
+    focus = cfg.section("dark")["focus_ship_types"]
+    zones = Zones.load(proc / "zones", cfg.section("zones")["anchorage_cell_deg"])
+    registry = pl.read_parquet(proc / "vessels.parquet")
+    gaps = pl.read_parquet(proc / "dark" / "gaps.parquet")
+    out_dir = proc / "sts"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    _log("binning slow positions")
+    t0 = time.perf_counter()
+    cand = load_candidates(points, p)
+    cand, funnel = drop_routine(cand, zones, registry, p)
+    _log(f"candidates: {funnel}")
+
+    _log("pairing with KD-tree per time bin")
+    t1 = time.perf_counter()
+    pairs = close_pairs(cand, p, cfg.crs_metric)
+    t_pair = time.perf_counter() - t1
+    ep = build_episodes(pairs, p)
+    ep = flag_dark_context(classify_pairs(ep, registry, focus, p), gaps, p.dark_window_h)
+    ep.write_parquet(out_dir / "encounters.parquet")
+    runtime = time.perf_counter() - t0
+
+    summary = {
+        **funnel,
+        "n_time_bins": cand["bin"].n_unique(),
+        "max_candidates_in_one_bin": int(cand.group_by("bin").len()["len"].max()),
+        "close_pair_bins": pairs.height,
+        "encounters": ep.height,
+        "encounters_by_class": dict(ep["pair_class"].value_counts().iter_rows()),
+        "encounters_with_dark_nearby": int(ep["dark_nearby"].sum()),
+        "focus_encounters_with_dark_nearby": int(
+            ep.filter(pl.col("pair_class").str.starts_with("cargo_tanker"))["dark_nearby"].sum()),
+        "median_duration_h": float(ep["duration_h"].median()) if ep.height else None,
+        "pairing_seconds": round(t_pair, 1),
+        "total_seconds": round(runtime, 1),
+    }
+    (cfg.paths.tables / "a3_summary.json").write_text(json.dumps(summary, indent=2))
+    _log(f"summary: {json.dumps(summary, indent=2)}")
+
+    cols = ["pair_class", "dark_nearby", "mmsi_a", "name_a", "ship_type_a", "mmsi_b", "name_b",
+            "ship_type_b", "start", "end", "duration_h", "mean_dist_m", "min_dist_m",
+            "lat", "lon"]
+    focus_ep = ep.filter(pl.col("pair_class").str.starts_with("cargo_tanker"))
+    (focus_ep.sort(["dark_nearby", "duration_h"], descending=True).select(cols)
+     .write_csv(cfg.paths.tables / "a3_encounters_cargo_tanker.csv"))
+
+    figs = cfg.paths.figures
+    coverage = pl.read_parquet(proc / "coverage.parquet")
+    encounter_map(ep, coverage, cfg.section("dark")["coverage_cell_deg"], cfg.aoi["full"],
+                  figs / "a3_encounters_map.png")
+    # Illustrative example: an operation-length encounter. Multi-day "encounters" are almost
+    # always two ships moored together in a small harbour missing from WPI.
+    example = focus_ep.filter(pl.col("duration_h") <= cfg.section("sts")["example_max_h"])
+    if example.height:
+        top = example.sort(["dark_nearby", "duration_h"], descending=True).row(0, named=True)
+        w = timedelta(hours=3)
+        tracks = pl.concat([
+            pl.scan_parquet(f).filter(pl.col("mmsi").is_in([top["mmsi_a"], top["mmsi_b"]])
+                                      & pl.col("ts").is_between(top["start"] - w, top["end"] + w))
+            .select("mmsi", "ts", "lat", "lon").collect()
+            for f in points])
+        encounter_detail(tracks, top, figs / "a3_encounter_example.png")
+    _log(f"figures in {figs}")

@@ -139,3 +139,29 @@ class Zones:
         port = near_port(df[lat].to_numpy(), df[lon].to_numpy(), self.ports)
         anch = in_anchorage(df, self.anchor_cells, self.anchor_cell_deg, lat, lon)
         return port | anch
+
+    def mask_gridded(self, df: pl.DataFrame, cell_deg: float,
+                     lat: str = "lat", lon: str = "lon") -> np.ndarray:
+        """Fast mask for millions of points: test each distinct grid cell's centre once.
+
+        Port distance is evaluated at the cell centre, so a point can be misjudged by at most
+        half a cell diagonal (~300 m for 0.005 deg). Anchorage cells are tested exactly.
+        """
+        if df.is_empty():
+            return np.zeros(0, dtype=bool)
+        keyed = df.select(cell_exprs(cell_deg, lat, lon)).with_row_index("_i")
+        cells = keyed.select("cx", "cy").unique().with_columns(
+            lat=(pl.col("cy") + 0.5) * cell_deg, lon=(pl.col("cx") + 0.5) * cell_deg)
+        cells = cells.with_columns(
+            _port=pl.Series(near_port(cells["lat"].to_numpy(), cells["lon"].to_numpy(),
+                                      self.ports)))
+        port = keyed.join(cells.select("cx", "cy", "_port"), on=["cx", "cy"], how="left") \
+                    .sort("_i")["_port"].to_numpy()
+        anch = in_anchorage(df, self.anchor_cells, self.anchor_cell_deg, lat, lon)
+        return port | anch
+
+    @classmethod
+    def load(cls, zone_dir: Path, anchor_cell_deg: float) -> Zones:
+        """Zones cached by A2 (data/processed/zones)."""
+        return cls(pl.read_parquet(zone_dir / "ports.parquet"),
+                   pl.read_parquet(zone_dir / "anchorage_cells.parquet"), anchor_cell_deg)

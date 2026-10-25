@@ -74,7 +74,35 @@ Runtime: 23 s for 53 M fixes (after A1).
 review of 5 cases took minutes and left 2. The detector is a triage tool, not a verdict.
 
 ## A3 – Ship-to-ship encounters
-_pending_
+
+Rule: two vessels < 500 m apart, both < 3 kn, ≥ 1 h, outside ports/anchorages; sailing and
+pleasure craft excluded. 5-min bins, up to 10 min reception dropout bridged.
+Output: `outputs/tables/a3_summary.json`, `outputs/tables/a3_encounters_cargo_tanker.csv`.
+
+| Funnel | Vessel-bins |
+|---|---:|
+| Slow (< 3 kn) vessel positions, 5-min bins | 3,353,302 |
+| − inside ports / learned anchorages | 2,229,444 |
+| − sailing / pleasure craft | 639,493 |
+| **Candidates for pairing** | **484,365** |
+
+- **Spatial indexing:** 1,440 time bins, up to 421 candidates per bin. A brute-force search
+  would need **81.9 M** pairwise distances; the per-bin KD-tree returns the 242,968 close
+  pairs in **1.4 s** (whole A3 stage 7.5 s). A unit test proves the KD-tree result equals
+  the brute-force result on random data. The gap widens quadratically with traffic density.
+- **Encounters found: 2,534** (median 3.1 h): 1,351 with a tug/pilot/SAR/other service
+  vessel, 727 fishing pairs, 441 other, **15 cargo/tanker pairs**.
+- 696 encounters have a dark gap (A2) of either vessel within ±12 h: 392 fishing, 212
+  service, 92 other, **0 cargo/tanker**.
+- Manual triage of the 15 cargo/tanker encounters:
+  - **5 at the Skagen anchorage** (57.5–57.7°N, 10.6°E): a tanker alongside another ship
+    for 3–9 h at 20–70 m antenna separation — consistent with routine **bunkering**, a true
+    STS operation of a legitimate kind (`outputs/figures/a3_encounter_example.png`).
+  - ~8 are ships moored together in **small harbours missing from WPI** (Skive, Snaptun,
+    Dagebüll, one berth on west Zealand seen 5 times in 5 days) → false positives.
+  - The rest need a coastline test to judge (planned with land polygons in A4).
+- The pipeline is deterministic: the development run and the user's run produced identical
+  counts.
 
 ## A4 – GNSS interference
 _pending_
