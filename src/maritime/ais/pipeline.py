@@ -4,6 +4,7 @@ A1: download -> extract -> stage -> clean -> trajectories. Resumable: a day whos
     cleaned output and stats already exist is skipped unless force=True.
 A2: zones -> gaps -> coverage -> classification; manoeuvre events.
 A3: slow binned positions -> KD-tree pairs -> encounter episodes.
+A4: land test + jumps + circles per cell-hour -> interference flags; A3 coast re-check.
 """
 
 from __future__ import annotations
@@ -34,6 +35,17 @@ from maritime.ais.encounters import (
     flag_dark_context,
     load_candidates,
 )
+from maritime.ais.gnss_anomaly import (
+    CircleParams,
+    InterferenceParams,
+    convergence,
+    distance_to_land_m,
+    download_natural_earth,
+    flag_cells,
+    inland_area,
+    load_land,
+    process_bucket,
+)
 from maritime.ais.trajectories import build_trajectories
 from maritime.ais.vessels import vessel_registry
 from maritime.config import Config
@@ -43,6 +55,8 @@ from maritime.plots import (
     encounter_detail,
     encounter_map,
     gap_category_chart,
+    interference_daily_maps,
+    interference_timeseries,
 )
 from maritime.zones import Zones, anchorage_cells, download_wpi, load_wpi
 
@@ -283,4 +297,115 @@ def run_a3(cfg: Config) -> None:
             .select("mmsi", "ts", "lat", "lon").collect()
             for f in points])
         encounter_detail(tracks, top, figs / "a3_encounter_example.png")
+    _log(f"figures in {figs}")
+
+
+# ---------------------------------------------------------------- A4
+
+def run_a4(cfg: Config) -> None:
+    proc, tables, figs = cfg.paths.processed, cfg.paths.tables, cfg.paths.figures
+    points = sorted((proc / "trajectories").glob("points_b*.parquet"))
+    if not (proc / "sts" / "encounters.parquet").exists():
+        raise SystemExit("A3 output not found: run `python -m maritime a3` first")
+
+    ic = cfg.section("interference")
+    p = InterferenceParams.from_dict(ic)
+    cp = CircleParams.from_dict(cfg.section("circles"))
+    zones = Zones.load(proc / "zones", cfg.section("zones")["anchorage_cell_deg"])
+    registry = pl.read_parquet(proc / "vessels.parquet")
+    out_dir = proc / "gnss"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    _log("loading Natural Earth land polygons")
+    ne = download_natural_earth(ic["natural_earth_url"], ic["natural_earth_layers"],
+                                cfg.paths.reference / "ne")
+    land = load_land(ne, cfg.aoi["full"], cfg.crs_metric)
+    inland = inland_area(land, p.inland_buffer_m)
+
+    _log("scanning MMSI buckets (land test, jumps, circles)")
+    t0 = time.perf_counter()
+    stats, dests, circles, n_land, n_land_jump = [], [], [], 0, 0
+    for f in points:
+        s, d, c, nl, nlj = process_bucket(f, inland, cfg.crs_metric, zones,
+                                          cfg.section("sts")["zone_cell_deg"], p, cp)
+        stats.append(s)
+        dests.append(d)
+        circles.append(c)
+        n_land += nl
+        n_land_jump += nlj
+    cells = flag_cells(pl.concat(stats), p)
+    conv = convergence(pl.concat(dests), p)
+    circles = pl.concat(circles).join(registry.select("mmsi", "name", "ship_type"),
+                                      on="mmsi", how="left")
+    circles = circles.with_columns(
+        unexpected=~pl.col("ship_type").is_in(list(cp.expected_types)).fill_null(False))
+    cells.write_parquet(out_dir / "interference_cells.parquet")
+    conv.write_parquet(out_dir / "convergence.parquet")
+    circles.write_parquet(out_dir / "circles.parquet")
+    scan_s = time.perf_counter() - t0
+
+    # ---- regional time series
+    lon_min, lat_min, lon_max, lat_max = cfg.aoi["bornholm"]
+    c = pl.col
+    in_region = (((c("cx") + 0.5) * p.cell_deg).is_between(lon_min, lon_max)
+                 & ((c("cy") + 0.5) * p.cell_deg).is_between(lat_min, lat_max))
+    hours = pl.DataFrame({"hour": pl.datetime_range(cells["hour"].min(), cells["hour"].max(),
+                                                    "1h", eager=True)})
+    agg = cells.with_columns(region=in_region).group_by("hour").agg(
+        affected_region=c("affected").filter(c("flagged") & c("region")).sum(),
+        affected_rest=c("affected").filter(c("flagged") & ~c("region")).sum(),
+        affected_region_all=c("affected").filter(c("region")).sum(),
+        n_region=c("n").filter(c("region")).sum(),
+    )
+    hourly = hours.join(agg, on="hour", how="left").fill_null(0).with_columns(
+        share_region=pl.when(c("n_region") > 0)
+        .then(c("affected_region_all") / c("n_region")).otherwise(0.0)).sort("hour")
+    hourly.write_csv(tables / "a4_hourly_bornholm_vs_rest.csv")
+
+    # ---- A3 re-check: encounters right next to the coastline are berths, not STS
+    enc = pl.read_parquet(proc / "sts" / "encounters.parquet")
+    enc = enc.with_columns(dist_to_land_m=pl.Series(
+        distance_to_land_m(enc["lon"].to_numpy(), enc["lat"].to_numpy(), land, cfg.crs_metric)))
+    enc = enc.with_columns(near_coast=c("dist_to_land_m") < ic["near_coast_m"])
+    enc.write_parquet(proc / "sts" / "encounters_coast.parquet")
+    focus_enc = enc.filter(c("pair_class").str.starts_with("cargo_tanker"))
+
+    flagged = cells.filter(c("flagged"))
+    by_day = (flagged.group_by(c("hour").dt.date().alias("day"))
+              .agg(cell_hours=pl.len(), vessel_hours=c("affected").sum()).sort("day"))
+    peak = flagged.sort("affected", descending=True).head(1)
+    summary = {
+        "scan_seconds": round(scan_s, 1),
+        "fixes_deep_inland_outside_ports": n_land,
+        "fixes_on_land_after_jump": n_land_jump,
+        "cell_hours_total": cells.height,
+        "cell_hours_flagged": flagged.height,
+        "flagged_by_day": {str(r["day"]): {"cell_hours": r["cell_hours"],
+                                           "affected_vessel_hours": r["vessel_hours"]}
+                           for r in by_day.iter_rows(named=True)},
+        "flagged_cell_hours_in_bornholm_box": int(flagged.filter(in_region).height),
+        "peak_cell_hour": {k: str(v) for k, v in peak.row(0, named=True).items()}
+        if peak.height else None,
+        "peak_hour_bornholm_affected": int(hourly["affected_region"].max()),
+        "peak_hour_bornholm_share_pct": round(100 * float(hourly["share_region"].max()), 1),
+        "convergent_jump_cells": conv.height,
+        "circle_events": circles.height,
+        "circle_events_unexpected_types": int(circles["unexpected"].sum()),
+        "a3_encounters_near_coast": int(enc["near_coast"].sum()),
+        "a3_cargo_tanker_encounters": focus_enc.height,
+        "a3_cargo_tanker_near_coast": int(focus_enc["near_coast"].sum()),
+    }
+    (tables / "a4_summary.json").write_text(json.dumps(summary, indent=2))
+    _log(f"summary: {json.dumps(summary, indent=2)}")
+    (focus_enc.select("pair_class", "name_a", "name_b", "start", "duration_h", "lat", "lon",
+                      "dist_to_land_m", "near_coast").sort("dist_to_land_m")
+     .write_csv(tables / "a4_a3_cargo_tanker_coast_check.csv"))
+    (circles.filter(c("unexpected")).sort("ts")
+     .write_csv(tables / "a4_circles_unexpected_types.csv"))
+
+    coverage = pl.read_parquet(proc / "coverage.parquet")
+    interference_daily_maps(cells, coverage, p.cell_deg, cfg.section("dark")["coverage_cell_deg"],
+                            cfg.aoi["full"],
+                            figs / "a4_interference_daily.png")
+    interference_timeseries(hourly, "Bornholm box", figs / "a4_interference_timeseries.png")
     _log(f"figures in {figs}")

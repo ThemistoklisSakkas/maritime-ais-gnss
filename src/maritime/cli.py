@@ -42,6 +42,12 @@ def cmd_a3(args: argparse.Namespace) -> None:
     run_a3(load_config(args.config))
 
 
+def cmd_a4(args: argparse.Namespace) -> None:
+    from maritime.ais.pipeline import run_a4
+
+    run_a4(load_config(args.config))
+
+
 def main(argv: list[str] | None = None) -> None:
     # Windows consoles default to cp1252, which cannot print polars' table borders
     sys.stdout.reconfigure(encoding="utf-8")
@@ -60,6 +66,8 @@ def main(argv: list[str] | None = None) -> None:
        .set_defaults(func=cmd_a2)
     sub.add_parser("a3", help="ship-to-ship encounters (KD-tree pairing)") \
        .set_defaults(func=cmd_a3)
+    sub.add_parser("a4", help="GNSS interference indicators and heatmap") \
+       .set_defaults(func=cmd_a4)
 
     args = parser.parse_args(argv)
     args.func(args)

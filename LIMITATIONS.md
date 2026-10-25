@@ -48,6 +48,25 @@ Known caveats, added as each phase is built.
 - Sailing and pleasure craft are excluded up front; an STS involving a vessel that broadcasts a
   false ship type of that kind would be missed.
 
+## A4 – GNSS interference indicators
+- AIS sees interference only through its consequences (impossible jumps, invalid speed,
+  erratic course). A receiver that loses lock and simply stops reporting looks like a gap, and
+  a small, smooth spoofing offset (< 50 kn implied speed) is invisible here.
+- Natural Earth 1:10M closes many Danish fjords and sounds: ~540 k fixes of normal traffic
+  fall "deep inland". The land indicator therefore only counts on-land fixes in segments that
+  began with an impossible jump. Residual noise remains along the Kiel Canal and Limfjord,
+  where reception artefacts occasionally open a segment with a jump.
+- Detection cells are 0.5° (~55 × 31 km) and hourly: chosen to match the footprint of a
+  jammer; short or very local events are diluted.
+- "Affected vessels" counts jumps and on-land fixes, not the cause: an MMSI clash (two ships
+  sharing one MMSI) also produces jumps. We checked the two most affected vessels of the
+  2025-06-05 event by hand (single name/IMO each, jumps only while transiting the area).
+- "Circles" are computed from reported COG. Under degraded GNSS, COG itself is erratic, so a
+  circle can be noise rather than a real circular track; outside interference periods most
+  detected circles are ferries, HSC and survey vessels.
+- No ground truth: there is no public, time-stamped list of jamming incidents to validate
+  against, so results are indicators, not confirmed events.
+
 ## Part B
 - The navigation solution is horizontal (2D, 8-state). Roll, pitch and heave are not modelled.
 - IMU errors are simulated from a parametric model, not taken from a real sensor log.

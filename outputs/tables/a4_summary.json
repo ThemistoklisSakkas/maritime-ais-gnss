@@ -1,0 +1,45 @@
+{
+  "scan_seconds": 68.3,
+  "fixes_deep_inland_outside_ports": 541658,
+  "fixes_on_land_after_jump": 17093,
+  "cell_hours_total": 18260,
+  "cell_hours_flagged": 24,
+  "flagged_by_day": {
+    "2025-06-02": {
+      "cell_hours": 1,
+      "affected_vessel_hours": 3
+    },
+    "2025-06-03": {
+      "cell_hours": 4,
+      "affected_vessel_hours": 12
+    },
+    "2025-06-05": {
+      "cell_hours": 18,
+      "affected_vessel_hours": 64
+    },
+    "2025-06-06": {
+      "cell_hours": 1,
+      "affected_vessel_hours": 3
+    }
+  },
+  "flagged_cell_hours_in_bornholm_box": 24,
+  "peak_cell_hour": {
+    "cx": "30",
+    "cy": "111",
+    "hour": "2025-06-05 15:00:00+00:00",
+    "n": "16",
+    "jump_vessels": "6",
+    "land_vessels": "0",
+    "affected": "6",
+    "share": "0.375",
+    "flagged": "True"
+  },
+  "peak_hour_bornholm_affected": 16,
+  "peak_hour_bornholm_share_pct": 9.7,
+  "convergent_jump_cells": 0,
+  "circle_events": 788,
+  "circle_events_unexpected_types": 138,
+  "a3_encounters_near_coast": 2316,
+  "a3_cargo_tanker_encounters": 15,
+  "a3_cargo_tanker_near_coast": 9
+}

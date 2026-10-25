@@ -22,7 +22,7 @@ dates:
 # used for the GNSS interference analysis (A4).
 aoi:
   full: [3.0, 53.5, 17.0, 58.5]
-  bornholm: [13.5, 54.5, 16.5, 56.0]
+  bornholm: [13.5, 54.5, 17.0, 56.8]   # widened after A1 showed the event extends NE
 
 # Projected CRS for metric computations (ETRS89 / UTM zone 32N).
 crs_metric: "EPSG:25832"
@@ -94,3 +94,25 @@ sts:
                        "Medical"]
   dark_window_h: 12            # dark gap of either vessel within +-12 h = "dark nearby"
   example_max_h: 12            # README example figure: pick an operation-length encounter
+
+# ---------------------------------------------------------------- A4
+interference:
+  natural_earth_url: "https://naciscdn.org/naturalearth/10m/physical"
+  natural_earth_layers: ["ne_10m_land", "ne_10m_minor_islands"]
+  inland_buffer_m: 1000        # 1:10M coastline is ~km-accurate: only deep-inland fixes count
+  cell_deg: 0.5                # detection grid (~55 x 31 km): jammers act over tens of km
+  min_affected_vessels: 3      # flag a cell-hour when >= 3 vessels...
+  min_affected_share: 0.05     # ...and >= 5 % of those present are affected
+  convergence_cell_deg: 0.05   # spoofing test: jump destinations shared by several vessels
+  convergence_min_vessels: 3
+  near_coast_m: 1000           # A3 re-check: encounters this close to land = likely a berth
+
+circles:
+  window_min: 30               # total turning summed over a trailing 30 min window...
+  min_turn_deg: 360            # ...reaching a full circle
+  min_sog_kn: 3                # COG is meaningless when (nearly) stopped
+  max_dt_s: 120                # ignore course steps across reporting gaps
+  merge_min: 60
+  expected_types: ["Fishing", "SAR", "Pilot", "Tug", "Sailing", "Pleasure", "Law enforcement",
+                   "Military", "Dredging", "Diving", "Towing", "Towing long/wide",
+                   "Anti-pollution", "Port tender", "Medical"]

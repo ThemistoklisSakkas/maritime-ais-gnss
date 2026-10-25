@@ -159,6 +159,74 @@ def encounter_detail(tracks: pl.DataFrame, enc: dict, out_png: Path) -> Path:
     return out_png
 
 
+def interference_daily_maps(cells: pl.DataFrame, coverage: pl.DataFrame, cell_deg: float,
+                            coverage_cell_deg: float, bbox: BBox, out_png: Path) -> Path:
+    """One panel per day: affected vessel-hours in flagged cell-hours, over coverage."""
+    from matplotlib.colors import LogNorm
+
+    plt = _plt()
+    lon_min, lat_min, lon_max, lat_max = bbox
+    flagged = cells.filter(pl.col("flagged")).with_columns(day=pl.col("hour").dt.date())
+    days = sorted(cells["hour"].dt.date().unique().to_list())
+    bg = _coverage_grid(coverage, coverage_cell_deg, bbox)
+    nx = int(round((lon_max - lon_min) / cell_deg))
+    ny = int(round((lat_max - lat_min) / cell_deg))
+    vmax = max(1, int(flagged.group_by(["day", "cx", "cy"]).agg(pl.col("affected").sum())
+                      ["affected"].max() or 1))
+
+    fig, axes = plt.subplots(1, len(days), figsize=(4.2 * len(days), 4.6), squeeze=False)
+    im = None
+    for ax, day in zip(axes[0], days, strict=True):
+        ax.imshow(bg, origin="lower", extent=[lon_min, lon_max, lat_min, lat_max],
+                  cmap="Greys", norm=LogNorm(), alpha=0.35, aspect="auto")
+        d = flagged.filter(pl.col("day") == day).group_by(["cx", "cy"]) \
+                   .agg(pl.col("affected").sum())
+        grid = np.full((ny, nx), np.nan)
+        ix = d["cx"].to_numpy() - int(round(lon_min / cell_deg))
+        iy = d["cy"].to_numpy() - int(round(lat_min / cell_deg))
+        ok = (ix >= 0) & (ix < nx) & (iy >= 0) & (iy < ny)
+        grid[iy[ok], ix[ok]] = d["affected"].to_numpy()[ok]
+        im = ax.imshow(grid, origin="lower", extent=[lon_min, lon_max, lat_min, lat_max],
+                       cmap="inferno_r", norm=LogNorm(vmin=1, vmax=vmax), aspect="auto")
+        ax.set_aspect(1 / np.cos(np.radians((lat_min + lat_max) / 2)))
+        ax.set_title(f"{day}  ({int(d['affected'].sum() or 0)} vessel-h)")
+        ax.set_xticks([])
+        ax.set_yticks([])
+    fig.colorbar(im, ax=axes[0].tolist(), shrink=0.8,
+                 label=f"affected vessel-hours per {cell_deg}° cell (flagged only)")
+    fig.suptitle("GNSS interference indicators in AIS, by day "
+                 "(impossible jumps / fixes deep inland, >= 3 vessels and >= 5 % per cell-hour)")
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return out_png
+
+
+def interference_timeseries(hourly: pl.DataFrame, region_name: str, out_png: Path) -> Path:
+    """Hourly affected vessels inside a region vs the rest of the AOI, plus regional share."""
+    plt = _plt()
+    fig, ax = plt.subplots(2, 1, figsize=(13, 6.5), sharex=True)
+    for col, color, label in (("affected_region", "tab:red", region_name),
+                              ("affected_rest", "tab:blue", "rest of AOI")):
+        ax[0].plot(hourly["hour"].to_numpy(), hourly[col].to_numpy(), color=color, lw=1.2,
+                   label=label)
+    ax[0].set_ylabel("affected vessels\n(flagged cell-hours)")
+    ax[0].legend()
+    ax[0].grid(alpha=0.3)
+    ax[1].fill_between(hourly["hour"].to_numpy(), 100 * hourly["share_region"].to_numpy(),
+                       color="tab:red", alpha=0.4, step="mid")
+    ax[1].set_ylabel(f"% of vessels in\n{region_name} affected")
+    ax[1].set_xlabel("Time (UTC)")
+    ax[1].grid(alpha=0.3)
+    fig.suptitle("GNSS interference indicators over time")
+    fig.autofmt_xdate()
+    fig.tight_layout()
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=150)
+    plt.close(fig)
+    return out_png
+
+
 def gap_category_chart(gaps: pl.DataFrame, out_png: Path) -> Path:
     """Left: why gaps were explained away. Right: duration distribution of dark gaps."""
     plt = _plt()

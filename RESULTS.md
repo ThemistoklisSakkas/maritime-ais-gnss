@@ -105,7 +105,48 @@ Output: `outputs/tables/a3_summary.json`, `outputs/tables/a3_encounters_cargo_ta
   counts.
 
 ## A4 – GNSS interference
-_pending_
+
+Indicators per 0.5° cell (~55 × 31 km) and hour, counted as distinct vessels: impossible
+jumps (A1) and fixes > 1 km inside Natural Earth land in a segment that began with a jump.
+Flag: ≥ 3 affected vessels and ≥ 5 % of vessels present. Spoofing test: ≥ 3 vessels jumping
+into the same 0.05° cell in the same hour. Scan of 53 M fixes: 68 s.
+Output: `outputs/tables/a4_summary.json`, `outputs/tables/a4_hourly_bornholm_vs_rest.csv`,
+figures `a4_interference_daily.png`, `a4_interference_timeseries.png`.
+
+| Day | Flagged cell-hours | Affected vessel-hours |
+|---|---:|---:|
+| 2025-06-02 | 1 | 3 |
+| 2025-06-03 | 4 | 12 |
+| 2025-06-04 | 0 | 0 |
+| **2025-06-05** | **18** | **64** |
+| 2025-06-06 | 1 | 3 |
+| **Total** | **24 of 18,260** | 82 |
+
+- **All 24 flagged cell-hours lie in the Bornholm box** (13.5–17°E, 54.5–56.8°N); none in the
+  rest of the AOI on any day.
+- **Peak: 2025-06-05, 10:00–18:00 UTC.** Up to **16 affected vessels** per hour in the box,
+  **9.7 %** of all vessels present; in the worst cell 6 of 16 vessels (37.5 %) jumped in one
+  hour (15:00 UTC). Smaller episodes on 06-02 afternoon and 06-03 evening.
+- **Convergent jumps: 0.** Jump destinations of different vessels never coincided → the
+  pattern is consistent with **jamming / degraded reception, not coordinated spoofing** to a
+  common false position.
+- Supporting signals during the peak: the two most affected vessels reported SOG > 60 kn in
+  16 % of their messages that day; a cargo ship and a tanker show 420–720° of apparent
+  turning (erratic COG) inside the box at the peak.
+- **MMSI-clash check:** both most-affected MMSIs carry a single name/IMO/call sign and jumped
+  only while transiting the box on 06-05 (none on 06-06) → interference victims, not clashes.
+  This resolves the A2 lead: the tanker that later went dark was affected by, not the cause of,
+  the jump cluster.
+- Land test: 541,658 normal fixes fall > 1 km inside the 1:10M land polygons (fjords and
+  sounds the map closes); requiring a preceding jump reduces this to 17,093, which never drove
+  a flag.
+- Circles: 788 events outside ports; 138 by vessel types that should not circle, mostly
+  ferries, HSC and survey vessels; 3 of them inside the box during the 06-05 peak.
+- **A3 coastline re-check:** 2,316 of 2,534 encounters lie < 1 km from land; **9 of the 15
+  cargo/tanker encounters** are next to the coast (berths in small harbours) → 6 remain
+  offshore, including the 5 Skagen bunkering operations.
+- No public ground-truth list of jamming incidents exists for validation; these are
+  indicators, not confirmed events.
 
 ## A5 – ETA prediction
 _pending_
