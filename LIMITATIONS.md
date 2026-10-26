@@ -96,3 +96,16 @@ Known caveats, added as each phase is built.
 ## Part B
 - The navigation solution is horizontal (2D, 8-state). Roll, pitch and heave are not modelled.
 - IMU errors are simulated from a parametric model, not taken from a real sensor log.
+- **Flat, non-rotating Earth, no gravity coupling:** there is no Schuler loop. In a real
+  INS a horizontal accelerometer bias produces a position error bounded by the 84-min
+  Schuler oscillation (amplitude ~ b R / g); here it grows as ½ b t² without bound. The two
+  agree for t ≪ T_S/4 ≈ 21 min, which covers the spoofing/jamming windows studied, but the
+  1-hour free-inertial numbers overstate real drift. Earth rate (12°/h vertical at 55° N) is
+  also absent, which flatters low-grade gyros.
+- "Bias instability" is modelled as a first-order Gauss-Markov process. Datasheet bias
+  instability is the flat flicker floor of the Allan deviation; a GM process only
+  approximates it over a band of averaging times (see `b1_allan_deviation.png`).
+- Ship motion has no sway/drift angle and no wave-induced accelerations; turns are
+  constant-rate. Real ship IMUs see much richer, noisier dynamics.
+- GNSS is simulated as position only with white + Gauss-Markov errors; no satellite
+  geometry (DOP), no outliers, no receiver clock or velocity outputs.

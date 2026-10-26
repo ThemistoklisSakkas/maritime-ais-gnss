@@ -32,7 +32,7 @@ written to `data/` (git-ignored); figures and tables to `outputs/`.
 | A3 | Ship-to-ship encounters | done |
 | A4 | GNSS interference indicators | done |
 | A5 | ETA prediction | done |
-| B1 | Trajectory and sensor simulation | – |
+| B1 | Trajectory and sensor simulation | done |
 | B2 | Loosely coupled EKF | – |
 | B3 | Attack injection | – |
 | B4 | Innovation-based detection | – |

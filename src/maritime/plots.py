@@ -270,6 +270,102 @@ def eta_evaluation(ev: pl.DataFrame, test: pl.DataFrame, out_png: Path) -> Path:
     return out_png
 
 
+# ================================================================ Part B
+
+def scenario_plot(truth, gnss, out_png: Path) -> Path:
+    """Simulated passage: true track, GNSS fixes (every 30th), heading and speed."""
+    plt = _plt()
+    fig, ax = plt.subplots(1, 2, figsize=(13, 5.5), gridspec_kw={"width_ratios": [1.1, 1]})
+    ax[0].plot(truth.p[:, 1] / 1000, truth.p[:, 0] / 1000, "k-", lw=1.2, label="truth")
+    ax[0].plot(gnss.p[::30, 1] / 1000, gnss.p[::30, 0] / 1000, ".", color="tab:blue", ms=3,
+               label="GNSS fix (every 30 s)")
+    ax[0].plot(0, 0, "go", label="start")
+    ax[0].set_aspect("equal")
+    ax[0].set_xlabel("East [km]")
+    ax[0].set_ylabel("North [km]")
+    ax[0].legend()
+    ax[0].set_title("Simulated 1 h coastal passage")
+    t_min = truth.t / 60
+    ax[1].plot(t_min, np.degrees(truth.psi) % 360, color="tab:red", label="heading [deg]")
+    ax2 = ax[1].twinx()
+    ax2.plot(t_min, truth.u / (1852 / 3600), color="tab:blue", label="speed through water [kn]")
+    ax[1].set_xlabel("time [min]")
+    ax[1].set_ylabel("heading [deg]", color="tab:red")
+    ax2.set_ylabel("speed [kn]", color="tab:blue")
+    ax2.set_ylim(0, 15)
+    ax[1].set_title("Heading and speed")
+    fig.tight_layout()
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=150)
+    plt.close(fig)
+    return out_png
+
+
+def drift_plot(t: np.ndarray, drift: dict, gnss_spec, out_png: Path) -> Path:
+    """Unaided INS horizontal error vs time: median and 5-95 % band per IMU grade."""
+    plt = _plt()
+    colors = {"tactical": "tab:red", "navigation": "tab:blue"}
+    fig, ax = plt.subplots(figsize=(10, 6))
+    t_min = t / 60
+    for grade, err in drift.items():
+        c = colors.get(grade, "k")
+        ax.fill_between(t_min[1:], np.percentile(err[:, 1:], 5, axis=0),
+                        np.percentile(err[:, 1:], 95, axis=0), color=c, alpha=0.15)
+        ax.plot(t_min[1:], np.median(err[:, 1:], axis=0), color=c, lw=2,
+                label=f"{grade} grade: median (band 5-95 %, {err.shape[0]} runs)")
+    ax.axhline(np.sqrt(2) * gnss_spec.sigma_total_m, color="k", ls="--",
+               label="GNSS horizontal 1-sigma")
+    ax.set_yscale("log")
+    ax.set_ylim(bottom=0.1)
+    ax.set_xlabel("time since GNSS lost [min]")
+    ax.set_ylabel("horizontal position error [m]")
+    ax.set_title("Free-inertial drift (INS alone, perfect initialisation)")
+    ax.grid(which="both", alpha=0.3)
+    ax.legend()
+    fig.tight_layout()
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=150)
+    plt.close(fig)
+    return out_png
+
+
+def allan_plot(tg, ag, ta, aa, spec, out_png: Path) -> Path:
+    """Allan deviation of the simulated static gyro and accelerometer vs the datasheet terms."""
+    from maritime.nav.sensors import allan_theory
+
+    plt = _plt()
+    dph = np.pi / 180 / 3600
+    fig, ax = plt.subplots(1, 2, figsize=(13, 5))
+    ax[0].loglog(tg, ag / dph, "k-", lw=1.5, label="simulated gyro")
+    ax[0].loglog(tg, spec.gyro_n / np.sqrt(tg) / dph, "r--",
+                 label=f"ARW {spec.gyro_arw_dprh} deg/sqrt(h): slope -1/2")
+    ax[0].loglog(tg, allan_theory(tg, spec.gyro_n, spec.gyro_bi, spec.gyro_bias_tau_s) / dph,
+                 "b:", lw=2, label=f"theory: ARW + Gauss-Markov "
+                 f"({spec.gyro_bias_instability_dph} deg/h, tau {spec.gyro_bias_tau_s:.0f} s)")
+    ax[0].set_xlabel("averaging time tau [s]")
+    ax[0].set_ylabel("Allan deviation [deg/h]")
+    ax[0].set_title("Gyro")
+    ug = 1e-6 * 9.80665
+    ax[1].loglog(ta, aa / ug, "k-", lw=1.5, label="simulated accelerometer")
+    ax[1].loglog(ta, spec.accel_n / np.sqrt(ta) / ug, "r--",
+                 label=f"VRW {spec.accel_vrw_mpsprh} m/s/sqrt(h)")
+    ax[1].loglog(ta, allan_theory(ta, spec.accel_n, spec.accel_bi, spec.accel_bias_tau_s) / ug,
+                 "b:", lw=2, label=f"theory: VRW + Gauss-Markov "
+                 f"({spec.accel_bias_instability_ug} ug, tau {spec.accel_bias_tau_s:.0f} s)")
+    ax[1].set_xlabel("averaging time tau [s]")
+    ax[1].set_ylabel("Allan deviation [ug]")
+    ax[1].set_title("Accelerometer")
+    for a in ax:
+        a.grid(which="both", alpha=0.3)
+        a.legend(fontsize=8)
+    fig.suptitle("Error-model check: Allan deviation of a 6 h static record (tactical grade)")
+    fig.tight_layout()
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=150)
+    plt.close(fig)
+    return out_png
+
+
 def gap_category_chart(gaps: pl.DataFrame, out_png: Path) -> Path:
     """Left: why gaps were explained away. Right: duration distribution of dark gaps."""
     plt = _plt()

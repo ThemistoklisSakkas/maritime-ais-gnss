@@ -131,3 +131,53 @@ circles:
   expected_types: ["Fishing", "SAR", "Pilot", "Tug", "Sailing", "Pleasure", "Law enforcement",
                    "Military", "Dredging", "Diving", "Towing", "Towing long/wide",
                    "Anti-pollution", "Port tender", "Medical"]
+
+# ================================================================ PART B (simulation)
+sim:
+  dt_imu_s: 0.1                # IMU at 10 Hz (ship dynamics are slow)
+  substeps: 10                 # truth integrated at 100 Hz, IMU outputs interval means
+  u0_kn: 12
+  psi0_deg: 30
+  current_ne_mps: [0.20, 0.10] # ~0.4 kn set; makes the speed log differ from SOG
+  # 1 h coastal passage: straight legs, turns at 0.5 deg/s (~30 deg/min), a slow-down
+  legs:
+    - {duration_s: 900}
+    - {duration_s: 180, turn_rate_dps: 0.5}
+    - {duration_s: 600}
+    - {duration_s: 120, accel_mps2: -0.0171}    # 12 -> 8 kn
+    - {duration_s: 360, turn_rate_dps: -0.5}
+    - {duration_s: 1440}
+  imu_grade: tactical          # grade used by B2-B5
+  imu_grades:
+    tactical:                  # tactical-grade MEMS IMU
+      gyro_turn_on_dph: 3.0
+      gyro_bias_instability_dph: 0.5
+      gyro_bias_tau_s: 300
+      gyro_arw_dprh: 0.15
+      accel_turn_on_mg: 0.3
+      accel_bias_instability_ug: 20
+      accel_bias_tau_s: 300
+      accel_vrw_mpsprh: 0.03
+    navigation:                # navigation-grade FOG/RLG IMU
+      gyro_turn_on_dph: 0.01
+      gyro_bias_instability_dph: 0.003
+      gyro_bias_tau_s: 3600
+      gyro_arw_dprh: 0.002
+      accel_turn_on_mg: 0.025
+      accel_bias_instability_ug: 5
+      accel_bias_tau_s: 3600
+      accel_vrw_mpsprh: 0.005
+  gnss:
+    rate_hz: 1
+    sigma_white_m: 1.5         # per axis
+    sigma_corr_m: 1.5          # per axis, Gauss-Markov (multipath, atmosphere)
+    tau_corr_s: 60
+  speed_log:
+    rate_hz: 1
+    sigma_mps: 0.05
+    scale_factor_ppm: 5000     # 0.5 % calibration error
+
+b1:
+  mc_runs: 200                 # free-inertial drift Monte Carlo per grade
+  report_times_s: [60, 300, 600, 1800, 3600]
+  allan_hours: 6               # static record length for the Allan-deviation check

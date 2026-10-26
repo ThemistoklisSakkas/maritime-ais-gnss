@@ -190,5 +190,39 @@ choices). Output: `outputs/tables/a5_summary.json`, `a5_eta_mae_by_horizon.csv`,
 - Largest residual error source: vessels **waiting at anchor outside the port** for 1–2 days
   — close in distance, far in time. Not predictable from AIS kinematics alone.
 
+## B1 – Trajectory and sensor simulation
+
+Scenario: 1 h coastal passage, 12 kn, two 0.5°/s turns, slow-down to 8 kn, 0.4 kn current
+(`b1_scenario.png`). IMU 10 Hz (truth integrated at 100 Hz, IMU outputs interval means),
+GNSS 1 Hz (1.5 m white + 1.5 m Gauss-Markov τ = 60 s per axis), speed log 1 Hz (0.5 % scale
+factor). Output: `outputs/tables/b1_summary.json`, `b1_free_inertial_drift.csv`.
+
+**Error-model validation (6 h static record, tactical grade, `b1_allan_deviation.png`):**
+
+| Term | Specified | Recovered from simulated data |
+|---|---:|---:|
+| Gyro ARW (ADEV at τ = 1 s) | 0.15 °/√h | **0.151 °/√h** |
+| Accelerometer VRW | 0.03 m/s/√h | **0.0303 m/s/√h** |
+| Allan curve vs closed-form ARW + Gauss-Markov theory | — | within 1 % for τ < 100 s, ≤ 8 % to 1000 s (unit-tested at 15 %) |
+
+**Free-inertial drift** (INS alone from a perfect initial state, horizontal error, 200
+Monte Carlo runs per grade, `b1_free_inertial_drift.png`):
+
+| Time without GNSS | Tactical MEMS median / 95 % | Navigation FOG median / 95 % |
+|---|---:|---:|
+| 1 min | 5.5 m / 12.4 m | 0.5 m / 1.0 m |
+| 5 min | 143 m / 309 m | 13 m / 24 m |
+| 10 min | 575 m / 1.2 km | 53 m / 99 m |
+| 30 min | 4.2 km / 9.3 km | 397 m / 738 m |
+| 60 min | 11.1 km / 25.2 km | 1.06 km / 1.96 km |
+
+- Sanity check: tactical 5-min median 143 m vs ½·b·t² = 132 m for a 0.3 mg bias;
+  navigation grade ~1 km/h vs the classic "~1 NM/h" marine INS figure.
+- A tactical MEMS IMU exceeds the GNSS error (~3 m horizontal) after **under 1 minute**;
+  a navigation-grade IMU after ~3 minutes. Detecting bad GNSS quickly matters more than the
+  IMU grade over short attacks.
+- Without a Schuler loop (flat Earth) the > 20-min figures overstate real drift; see
+  LIMITATIONS.
+
 ## B – INS/GNSS resilience (Monte Carlo)
 _pending_

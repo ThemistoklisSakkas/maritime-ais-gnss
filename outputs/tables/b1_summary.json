@@ -1,0 +1,53 @@
+{
+  "scenario_minutes": 60.0,
+  "gnss_sigma_per_axis_m": 2.12,
+  "drift": {
+    "tactical@60s": {
+      "median_m": 5.5,
+      "p95_m": 12.4
+    },
+    "tactical@300s": {
+      "median_m": 143.1,
+      "p95_m": 309.2
+    },
+    "tactical@600s": {
+      "median_m": 575.3,
+      "p95_m": 1245.7
+    },
+    "tactical@1800s": {
+      "median_m": 4172.0,
+      "p95_m": 9345.5
+    },
+    "tactical@3600s": {
+      "median_m": 11076.3,
+      "p95_m": 25239.5
+    },
+    "navigation@60s": {
+      "median_m": 0.5,
+      "p95_m": 1.0
+    },
+    "navigation@300s": {
+      "median_m": 13.3,
+      "p95_m": 24.5
+    },
+    "navigation@600s": {
+      "median_m": 52.7,
+      "p95_m": 98.8
+    },
+    "navigation@1800s": {
+      "median_m": 397.4,
+      "p95_m": 738.1
+    },
+    "navigation@3600s": {
+      "median_m": 1059.1,
+      "p95_m": 1957.8
+    }
+  },
+  "allan_check": {
+    "gyro_arw_spec_dprh": 0.15,
+    "gyro_arw_recovered_dprh": 0.151,
+    "accel_vrw_spec": 0.03,
+    "accel_vrw_recovered": 0.0303,
+    "gyro_adev_min_dph": 0.168
+  }
+}
