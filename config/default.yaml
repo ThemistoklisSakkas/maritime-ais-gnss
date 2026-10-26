@@ -108,7 +108,7 @@ eta:
   sog_floor_kn: 1              # baseline divides by max(SOG, 1 kn)
   train_share: 0.7             # earliest 70 % of arrivals train, latest 30 % test
   zone_cell_deg: 0.005
-  crew_plausible_max_h: 336    # crew ETA counted "plausible" if 0..14 days ahead
+  crew_plausible_max_h: 336    # manual AIS ETA counted "plausible" if 0..14 days ahead
 
 # ---------------------------------------------------------------- A4
 interference:

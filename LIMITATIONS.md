@@ -80,10 +80,15 @@ Known caveats, added as each phase is built.
 - Great-circle distance ignores land: routes around Jutland or through the Belts are longer.
   The model partly learns this from position features; a proper route network (e.g. a
   sea-lane graph) would do better.
-- Crew ETA: matched to the arrival port by UN/LOCODE or port-name substring; exonyms
-  ("GOTHENBURG" vs WPI "Goteborg") are missed. AIS ETA has no year; we re-attach the year
-  closest to the report time. 22 % of matched crew ETAs were already in the past (not
-  updated), so crew-ETA results are reported both raw and on a "plausible" subset.
+- AIS-reported ETA ("crew ETA" in code): this is the manually entered msg-5 field, not the
+  ECDIS navigational ETA, which AIS does not carry. Some integrated bridges can feed it
+  automatically; we cannot tell which vessels do. It is matched to the arrival port by
+  UN/LOCODE or port-name substring; exonyms ("GOTHENBURG" vs WPI "Goteborg") are missed.
+  The AIS ETA has no year; we re-attach the year closest to the report time. 22 % of matched
+  values were already in the past (not updated), so results are reported both raw and on a
+  "plausible" subset.
+- The baseline uses great-circle distance; a real ECDIS ETA uses the passage-plan route and
+  would be more accurate at long horizons than our baseline.
 - The model target transform (log hours) was chosen on a validation split inside the
   training period; the test set was not used for any choice. On test, the baseline remains
   slightly better in the last 3 h (0.93 vs 1.10 h MAE).

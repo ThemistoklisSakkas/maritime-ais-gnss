@@ -168,13 +168,22 @@ choices). Output: `outputs/tables/a5_summary.json`, `a5_eta_mae_by_horizon.csv`,
 
 - **Model vs baseline: −33 % MAE overall**; better at every horizon except the last 3 h,
   where dead reckoning is already near-exact.
-- **Crew-reported ETA** (destination matched to the arrival port by UN/LOCODE or name,
-  3,084 test samples): **21.9 % were already in the past** when read (not updated).
-  - All matched: crew MAE **27.15 h** (median 1.85 h) vs model 5.78 h, baseline 6.87 h.
-  - Plausible only (0–14 days ahead, 2,395 samples): crew MAE **3.20 h** (median 1.03 h) vs
-    model 4.28 h, baseline 5.53 h.
-  - → A maintained crew ETA is the best single predictor; a stale one is the worst. A
-    production system should combine them (crew ETA when plausible, model otherwise).
+- **What is being compared.** Two different ETAs exist on board. The bridge ECDIS/GNSS
+  computes a navigational ETA continuously (route distance-to-go / SOG); AIS does **not**
+  transmit it. The AIS **ETA field** (msg 5 voyage data) is entered **manually** by the
+  officer of the watch with the destination and updated "as necessary" — in practice the
+  commercial ETA given to agent and port. Our baseline is the dead-reckoning analogue of the
+  ECDIS ETA (with great-circle instead of route distance); "crew ETA" below is the manual
+  AIS field.
+- **AIS-reported (manual) ETA** (destination matched to the arrival port by UN/LOCODE or
+  name, 3,084 test samples): **21.9 % were already in the past** when read (not updated).
+  - All matched: AIS ETA MAE **27.15 h** (median 1.85 h) vs model 5.78 h, baseline 6.87 h.
+  - Plausible only (0–14 days ahead, 2,395 samples): AIS ETA MAE **3.20 h** (median
+    1.03 h) vs model 4.28 h, baseline 5.53 h.
+  - → A maintained AIS ETA is the best single predictor: it carries information invisible in
+    kinematics (pilot booking, berth window, planned waiting). Because it is manual, a stale
+    one is the worst. A production system should combine them (AIS ETA when plausible,
+    model otherwise).
 - Permutation importance (log-hours MAE increase): `baseline_h` 0.37, `off_course_deg`
   0.10, `sog_kn` 0.07, `dist_nm` 0.07; vessel type ≈ 0. The model mainly corrects the
   physics baseline for heading and speed changes near port.

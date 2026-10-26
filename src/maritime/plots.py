@@ -234,10 +234,13 @@ def eta_evaluation(ev: pl.DataFrame, test: pl.DataFrame, out_png: Path) -> Path:
     x = np.arange(bins.height)
     fig, ax = plt.subplots(1, 2, figsize=(14, 5.5))
     w = 0.38
-    ax[0].bar(x - w / 2, bins["mae_baseline_h"], w, color="#999", label="baseline: distance / SOG")
+    ax[0].bar(x - w / 2, bins["mae_baseline_h"], w, color="#999",
+              label="baseline: great-circle distance / SOG")
     ax[0].bar(x + w / 2, bins["mae_model_h"], w, color="tab:blue", label="gradient boosting")
-    for col, style, label in (("crew_median_ae_crew_h", "o--", "crew ETA, median abs error"),
-                              ("plausible_mae_crew_h", "s:", "crew ETA, MAE (plausible only)")):
+    for col, style, label in (("crew_median_ae_crew_h", "o--",
+                               "AIS-reported ETA (manual), median abs error"),
+                              ("plausible_mae_crew_h", "s:",
+                               "AIS-reported ETA (manual), MAE, plausible only")):
         crew = bins[col].to_numpy()
         ok = ~np.isnan(crew)
         ax[0].plot(x[ok], crew[ok], style, color="tab:red", label=label)

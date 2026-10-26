@@ -10,7 +10,14 @@
      model     gradient boosting on distance, speeds, heading-to-port, position, port, ship;
                trained on log(1 + hours) so a 30-min miss counts as much at 2 h as a 3-h
                miss at 20 h (chosen on a validation split inside the training period)
-     crew      the ETA typed into AIS by the crew, when its destination matches the port
+     crew      the AIS-reported ETA (msg 5 voyage data), when its destination matches the port.
+               This is NOT the ECDIS/GNSS "ETA to waypoint", which the bridge computes
+               continuously from route distance-to-go / SOG and which AIS does not carry. The
+               AIS field is entered manually by the OOW and updated "as necessary", so it
+               reflects the commercial voyage plan (pilot, berth window) and can go stale.
+               Code names use "crew_" for brevity.
+     The baseline is effectively the bridge's dead-reckoning ETA, but with great-circle
+     instead of route distance, since the passage plan is unknown.
 4. Evaluation on a TIME split: train on arrivals before a cutoff, test on later arrivals, so
    no voyage contributes to both sides and the model is scored on the "future".
 
