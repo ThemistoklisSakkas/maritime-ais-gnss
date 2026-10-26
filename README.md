@@ -31,7 +31,7 @@ written to `data/` (git-ignored); figures and tables to `outputs/`.
 | A2 | Dark activity | done |
 | A3 | Ship-to-ship encounters | done |
 | A4 | GNSS interference indicators | done |
-| A5 | ETA prediction | – |
+| A5 | ETA prediction | done |
 | B1 | Trajectory and sensor simulation | – |
 | B2 | Loosely coupled EKF | – |
 | B3 | Attack injection | – |

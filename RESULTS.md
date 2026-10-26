@@ -149,7 +149,37 @@ figures `a4_interference_daily.png`, `a4_interference_timeseries.png`.
   indicators, not confirmed events.
 
 ## A5 – ETA prediction
-_pending_
+
+Cargo and tanker vessels (1,466). Arrival = WPI port-zone entry followed by a ≥ 1 h mostly
+stopped stay. Samples every 30 min at sea, up to 48 h before arrival. **Time split by
+arrival:** earliest 70 % of arrivals train, arrivals from 2025-06-05 04:27 UTC test.
+Model: `HistGradientBoostingRegressor` on log(1 + hours), absolute-error loss; target
+transform chosen on a validation split inside the training period (test never used for
+choices). Output: `outputs/tables/a5_summary.json`, `a5_eta_mae_by_horizon.csv`,
+`a5_feature_importance.csv`, figure `a5_eta_evaluation.png`.
+
+- Data: 583 port stays, **414 observed arrivals**, 407 voyages with samples;
+  7,871 train / **4,628 test** samples.
+
+| MAE [h] on test | all | 0–3 h | 3–6 h | 6–12 h | 12–24 h | 24–48 h |
+|---|---:|---:|---:|---:|---:|---:|
+| Baseline (great-circle distance / 1-h mean SOG) | 9.64 | **0.93** | 2.27 | 3.82 | 7.98 | 26.58 |
+| **Gradient boosting** | **6.43** | 1.10 | **1.77** | **2.63** | **5.50** | **16.98** |
+
+- **Model vs baseline: −33 % MAE overall**; better at every horizon except the last 3 h,
+  where dead reckoning is already near-exact.
+- **Crew-reported ETA** (destination matched to the arrival port by UN/LOCODE or name,
+  3,084 test samples): **21.9 % were already in the past** when read (not updated).
+  - All matched: crew MAE **27.15 h** (median 1.85 h) vs model 5.78 h, baseline 6.87 h.
+  - Plausible only (0–14 days ahead, 2,395 samples): crew MAE **3.20 h** (median 1.03 h) vs
+    model 4.28 h, baseline 5.53 h.
+  - → A maintained crew ETA is the best single predictor; a stale one is the worst. A
+    production system should combine them (crew ETA when plausible, model otherwise).
+- Permutation importance (log-hours MAE increase): `baseline_h` 0.37, `off_course_deg`
+  0.10, `sog_kn` 0.07, `dist_nm` 0.07; vessel type ≈ 0. The model mainly corrects the
+  physics baseline for heading and speed changes near port.
+- Largest residual error source: vessels **waiting at anchor outside the port** for 1–2 days
+  — close in distance, far in time. Not predictable from AIS kinematics alone.
 
 ## B – INS/GNSS resilience (Monte Carlo)
 _pending_

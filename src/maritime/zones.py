@@ -92,6 +92,40 @@ def near_port(lat: np.ndarray, lon: np.ndarray, ports: pl.DataFrame,
     return out
 
 
+def nearest_port_index(lat: np.ndarray, lon: np.ndarray, ports: pl.DataFrame,
+                       chunk: int = 20_000) -> np.ndarray:
+    """Row index in `ports` of the closest port whose radius contains the point, else -1."""
+    lat = np.asarray(lat, dtype=float)
+    lon = np.asarray(lon, dtype=float)
+    out = np.full(lat.shape, -1, dtype=np.int64)
+    if ports.is_empty() or lat.size == 0:
+        return out
+    plat = np.radians(ports["lat"].to_numpy())[None, :]
+    plon = np.radians(ports["lon"].to_numpy())[None, :]
+    prad = ports["radius_km"].to_numpy()[None, :] * 1000.0
+    for i in range(0, lat.size, chunk):
+        la = np.radians(lat[i:i + chunk])[:, None]
+        lo = np.radians(lon[i:i + chunk])[:, None]
+        a = (np.sin((plat - la) / 2) ** 2
+             + np.cos(la) * np.cos(plat) * np.sin((plon - lo) / 2) ** 2)
+        d = 2 * EARTH_RADIUS_M * np.arcsin(np.sqrt(np.clip(a, 0, 1)))
+        d = np.where(d <= prad, d, np.inf)
+        j = d.argmin(axis=1)
+        out[i:i + chunk] = np.where(np.isfinite(d[np.arange(len(j)), j]), j, -1)
+    return out
+
+
+def nearest_port_gridded(df: pl.DataFrame, ports: pl.DataFrame, cell_deg: float,
+                         lat: str = "lat", lon: str = "lon") -> np.ndarray:
+    """nearest_port_index evaluated once per distinct grid cell (centre), for big inputs."""
+    keyed = df.select(cell_exprs(cell_deg, lat, lon)).with_row_index("_i")
+    cells = keyed.select("cx", "cy").unique()
+    idx = nearest_port_index(((cells["cy"] + 0.5) * cell_deg).to_numpy(),
+                             ((cells["cx"] + 0.5) * cell_deg).to_numpy(), ports)
+    cells = cells.with_columns(_port=pl.Series(idx))
+    return (keyed.join(cells, on=["cx", "cy"], how="left").sort("_i")["_port"].to_numpy())
+
+
 # ---------------------------------------------------------------- data-driven anchorages
 
 def anchorage_cells(points_paths: list[Path], cell_deg: float, min_vessels: int,

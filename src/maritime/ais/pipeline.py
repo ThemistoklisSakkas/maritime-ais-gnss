@@ -5,6 +5,7 @@ A1: download -> extract -> stage -> clean -> trajectories. Resumable: a day whos
 A2: zones -> gaps -> coverage -> classification; manoeuvre events.
 A3: slow binned positions -> KD-tree pairs -> encounter episodes.
 A4: land test + jumps + circles per cell-hour -> interference flags; A3 coast re-check.
+A5: port stays -> arrivals -> at-sea samples -> baseline vs gradient boosting vs crew ETA.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import json
 import time
 from datetime import date, timedelta
 
+import numpy as np
 import polars as pl
 
 from maritime.ais.clean import CleaningParams, clean_day, stage_csv
@@ -35,6 +37,19 @@ from maritime.ais.encounters import (
     flag_dark_context,
     load_candidates,
 )
+from maritime.ais.eta import (
+    FEATURES,
+    ETAParams,
+    arrivals_from_stays,
+    attach_crew_eta,
+    build_samples,
+    evaluate,
+    find_stays,
+    fit_model,
+    minute_tracks,
+    predict_hours,
+    time_split,
+)
 from maritime.ais.gnss_anomaly import (
     CircleParams,
     InterferenceParams,
@@ -54,6 +69,7 @@ from maritime.plots import (
     density_map,
     encounter_detail,
     encounter_map,
+    eta_evaluation,
     gap_category_chart,
     interference_daily_maps,
     interference_timeseries,
@@ -409,3 +425,82 @@ def run_a4(cfg: Config) -> None:
                             figs / "a4_interference_daily.png")
     interference_timeseries(hourly, "Bornholm box", figs / "a4_interference_timeseries.png")
     _log(f"figures in {figs}")
+
+
+# ---------------------------------------------------------------- A5
+
+def run_a5(cfg: Config) -> None:
+    from sklearn.inspection import permutation_importance
+
+    proc, tables, figs = cfg.paths.processed, cfg.paths.tables, cfg.paths.figures
+    points = sorted((proc / "trajectories").glob("points_b*.parquet"))
+    p = ETAParams.from_dict(cfg.section("eta"))
+    registry = pl.read_parquet(proc / "vessels.parquet")
+    ports = pl.read_parquet(proc / "zones" / "ports.parquet")
+    static = pl.concat([pl.read_parquet(f) for f in
+                        sorted((cfg.paths.interim / "clean").glob("static_*.parquet"))],
+                       how="diagonal_relaxed")
+    out_dir = proc / "eta"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    mmsis = registry.filter(pl.col("ship_type").is_in(list(p.ship_types)))["mmsi"]
+    _log(f"building 1-min tracks for {mmsis.len()} cargo/tanker vessels")
+    tracks = minute_tracks(points, mmsis, ports, p)
+    stays = find_stays(tracks, p)
+    arrivals = arrivals_from_stays(stays, tracks)
+    _log(f"{stays.height} port stays, {arrivals.height} observed arrivals")
+
+    samples = build_samples(arrivals, tracks, ports, registry, p)
+    samples = attach_crew_eta(samples, static, ports)
+    # arrivals that left no at-sea sample (e.g. first seen just outside the port) drop out
+    train, test = time_split(samples, p.train_share)
+    _log(f"samples: {samples.height} ({train.height} train / {test.height} test), "
+         f"{samples['arrival_id'].n_unique()} voyages")
+
+    model = fit_model(train, cfg.seed)
+    test = test.with_columns(model_h=pl.Series(predict_hours(model, test)))
+    test.write_parquet(out_dir / "test_predictions.parquet")
+    ev = evaluate(test, p.crew_plausible_max_h)
+    ev.write_csv(tables / "a5_eta_mae_by_horizon.csv")
+
+    sub = test.sample(n=min(5000, test.height), seed=cfg.seed)
+    # importance in the model's own log-hours space: loss of accuracy when a feature is
+    # shuffled
+    imp = permutation_importance(model, sub.select(FEATURES).to_numpy(),
+                                 np.log1p(sub["target_h"].to_numpy()),
+                                 scoring="neg_mean_absolute_error", n_repeats=5,
+                                 random_state=cfg.seed)
+    importance = pl.DataFrame({"feature": FEATURES,
+                               "mae_increase_log1p_h": imp.importances_mean}) \
+        .sort("mae_increase_log1p_h", descending=True)
+    importance.write_csv(tables / "a5_feature_importance.csv")
+
+    allrow = ev.filter(pl.col("horizon") == "all").row(0, named=True)
+    crew_test = test.filter(pl.col("crew_h").is_not_null())
+    keys = ("mae_crew_h", "median_ae_crew_h", "mae_model_h", "mae_baseline_h")
+    summary = {
+        "vessels": int(mmsis.len()),
+        "port_stays": stays.height,
+        "arrivals": arrivals.height,
+        "voyages_with_samples": int(samples["arrival_id"].n_unique()),
+        "samples_train": train.height,
+        "samples_test": test.height,
+        "test_arrivals_from": str(test["arrival"].min()),
+        "mae_baseline_h": round(allrow["mae_baseline_h"], 2),
+        "mae_model_h": round(allrow["mae_model_h"], 2),
+        "model_improvement_pct": round(100 * (1 - allrow["mae_model_h"]
+                                              / allrow["mae_baseline_h"]), 1),
+        "test_samples_with_matching_crew_eta": allrow["crew_n"],
+        "crew_eta_already_passed_pct": round(
+            100 * crew_test.filter(pl.col("crew_h") < 0).height / max(crew_test.height, 1), 1),
+        "crew_subset": {k: round(allrow[f"crew_{k}"], 2) for k in keys},
+        "plausible_crew_subset_n": allrow["plausible_n"],
+        "plausible_crew_subset": {k: round(allrow[f"plausible_{k}"], 2) for k in keys},
+        "top_features": importance.head(4)["feature"].to_list(),
+    }
+    (tables / "a5_summary.json").write_text(json.dumps(summary, indent=2))
+    _log(f"MAE by horizon:\n{ev}")
+    _log(f"feature importance:\n{importance}")
+    _log(f"summary: {json.dumps(summary, indent=2)}")
+    eta_evaluation(ev, test, figs / "a5_eta_evaluation.png")
+    _log(f"figure: {figs / 'a5_eta_evaluation.png'}")

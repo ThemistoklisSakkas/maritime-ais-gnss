@@ -227,6 +227,46 @@ def interference_timeseries(hourly: pl.DataFrame, region_name: str, out_png: Pat
     return out_png
 
 
+def eta_evaluation(ev: pl.DataFrame, test: pl.DataFrame, out_png: Path) -> Path:
+    """Left: MAE by horizon for baseline/model (+ crew on its subset). Right: predicted vs true."""
+    plt = _plt()
+    bins = ev.filter(pl.col("horizon") != "all")
+    x = np.arange(bins.height)
+    fig, ax = plt.subplots(1, 2, figsize=(14, 5.5))
+    w = 0.38
+    ax[0].bar(x - w / 2, bins["mae_baseline_h"], w, color="#999", label="baseline: distance / SOG")
+    ax[0].bar(x + w / 2, bins["mae_model_h"], w, color="tab:blue", label="gradient boosting")
+    for col, style, label in (("crew_median_ae_crew_h", "o--", "crew ETA, median abs error"),
+                              ("plausible_mae_crew_h", "s:", "crew ETA, MAE (plausible only)")):
+        crew = bins[col].to_numpy()
+        ok = ~np.isnan(crew)
+        ax[0].plot(x[ok], crew[ok], style, color="tab:red", label=label)
+    ax[0].set_xticks(x, bins["horizon"].to_list())
+    ax[0].set_xlabel("time to arrival")
+    ax[0].set_ylabel("MAE [h]")
+    ax[0].set_title("ETA error by prediction horizon (held-out later arrivals)")
+    ax[0].legend()
+    ax[0].grid(axis="y", alpha=0.3)
+
+    t = test["target_h"].to_numpy()
+    lim = float(np.nanmax(t)) * 1.05
+    ax[1].scatter(t, test["baseline_h"].clip(upper_bound=lim * 1.5), s=4, alpha=0.3,
+                  color="#999", label="baseline")
+    ax[1].scatter(t, test["model_h"], s=4, alpha=0.4, color="tab:blue", label="model")
+    ax[1].plot([0, lim], [0, lim], "k-", lw=1)
+    ax[1].set_xlim(0, lim)
+    ax[1].set_ylim(0, lim * 1.5)
+    ax[1].set_xlabel("true time to arrival [h]")
+    ax[1].set_ylabel("predicted [h]")
+    ax[1].set_title("Predicted vs true (test set)")
+    ax[1].legend()
+    fig.tight_layout()
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=150)
+    plt.close(fig)
+    return out_png
+
+
 def gap_category_chart(gaps: pl.DataFrame, out_png: Path) -> Path:
     """Left: why gaps were explained away. Right: duration distribution of dark gaps."""
     plt = _plt()

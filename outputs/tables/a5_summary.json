@@ -1,0 +1,33 @@
+{
+  "vessels": 1466,
+  "port_stays": 583,
+  "arrivals": 414,
+  "voyages_with_samples": 407,
+  "samples_train": 7871,
+  "samples_test": 4628,
+  "test_arrivals_from": "2025-06-05 04:27:00+00:00",
+  "mae_baseline_h": 9.64,
+  "mae_model_h": 6.43,
+  "model_improvement_pct": 33.3,
+  "test_samples_with_matching_crew_eta": 3084,
+  "crew_eta_already_passed_pct": 21.9,
+  "crew_subset": {
+    "mae_crew_h": 27.15,
+    "median_ae_crew_h": 1.85,
+    "mae_model_h": 5.78,
+    "mae_baseline_h": 6.87
+  },
+  "plausible_crew_subset_n": 2395,
+  "plausible_crew_subset": {
+    "mae_crew_h": 3.2,
+    "median_ae_crew_h": 1.03,
+    "mae_model_h": 4.28,
+    "mae_baseline_h": 5.53
+  },
+  "top_features": [
+    "baseline_h",
+    "off_course_deg",
+    "sog_kn",
+    "dist_nm"
+  ]
+}

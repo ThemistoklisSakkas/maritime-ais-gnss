@@ -95,6 +95,21 @@ sts:
   dark_window_h: 12            # dark gap of either vessel within +-12 h = "dark nearby"
   example_max_h: 12            # README example figure: pick an operation-length encounter
 
+# ---------------------------------------------------------------- A5
+eta:
+  ship_types: ["Cargo", "Tanker"]   # ferries are timetable-driven; leisure has no "arrival"
+  resample_min: 1              # one fix per vessel per minute is plenty for hour-scale ETA
+  min_stay_h: 1                # an arrival is a port-zone visit of at least 1 h...
+  stop_sog_kn: 1               # ...spent mostly (share below) slower than this
+  min_stop_share: 0.5
+  sample_every_min: 30         # one training/test sample per vessel per 30 min at sea
+  max_horizon_h: 48            # predict up to 2 days ahead (data window is 5 days)
+  state_tolerance_min: 10      # vessel state must be observed within 10 min of sample time
+  sog_floor_kn: 1              # baseline divides by max(SOG, 1 kn)
+  train_share: 0.7             # earliest 70 % of arrivals train, latest 30 % test
+  zone_cell_deg: 0.005
+  crew_plausible_max_h: 336    # crew ETA counted "plausible" if 0..14 days ahead
+
 # ---------------------------------------------------------------- A4
 interference:
   natural_earth_url: "https://naciscdn.org/naturalearth/10m/physical"

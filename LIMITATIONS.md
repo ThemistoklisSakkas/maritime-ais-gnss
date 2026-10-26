@@ -67,6 +67,27 @@ Known caveats, added as each phase is built.
 - No ground truth: there is no public, time-stamped list of jamming incidents to validate
   against, so results are indicators, not confirmed events.
 
+## A5 – ETA prediction
+- Only 5 days of data: voyages longer than the window are truncated, so short coastal trips
+  dominate; horizons are capped at 48 h. The test set is ~1.5 days of later arrivals.
+- "Arrival" = first fix inside a WPI port radius followed by a ≥ 1 h mostly-stopped stay. It is
+  not the berthing time, and lock waits (Kiel Canal entrances) count as arrivals.
+- **Waiting at anchor outside the port** (for a berth or pilot) is the dominant error at long
+  horizons: the vessel is close, so every kinematic method predicts a few hours while the true
+  wait is a day or more. Fixing this needs port congestion / berth schedule data, not AIS.
+- The destination is assumed known (the port actually reached). A deployed system would have
+  to infer or look it up.
+- Great-circle distance ignores land: routes around Jutland or through the Belts are longer.
+  The model partly learns this from position features; a proper route network (e.g. a
+  sea-lane graph) would do better.
+- Crew ETA: matched to the arrival port by UN/LOCODE or port-name substring; exonyms
+  ("GOTHENBURG" vs WPI "Goteborg") are missed. AIS ETA has no year; we re-attach the year
+  closest to the report time. 22 % of matched crew ETAs were already in the past (not
+  updated), so crew-ETA results are reported both raw and on a "plausible" subset.
+- The model target transform (log hours) was chosen on a validation split inside the
+  training period; the test set was not used for any choice. On test, the baseline remains
+  slightly better in the last 3 h (0.93 vs 1.10 h MAE).
+
 ## Part B
 - The navigation solution is horizontal (2D, 8-state). Roll, pitch and heave are not modelled.
 - IMU errors are simulated from a parametric model, not taken from a real sensor log.
