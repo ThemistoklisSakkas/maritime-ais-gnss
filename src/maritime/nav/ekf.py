@@ -228,7 +228,8 @@ class FilterLog:
     nu: np.ndarray             # (m, 2) innovation
     S: np.ndarray              # (m, 2, 2)
     nis: np.ndarray
-    accepted: np.ndarray       # bool
+    accepted: np.ndarray       # bool: the fix was used to update the filter
+    available: np.ndarray      # bool: a fix existed at all (False while jammed)
 
 
 def run_ekf(truth, imu, gnss_t: np.ndarray, gnss_idx: np.ndarray, gnss_p: np.ndarray,
@@ -250,7 +251,7 @@ def run_ekf(truth, imu, gnss_t: np.ndarray, gnss_idx: np.ndarray, gnss_p: np.nda
                     psi=np.empty(m), b_a=np.empty((m, 2)), b_g=np.empty(m),
                     P_diag=np.empty((m, N_STATES)), P=np.empty((m, N_STATES, N_STATES)),
                     nu=np.empty((m, 2)), S=np.empty((m, 2, 2)), nis=np.empty(m),
-                    accepted=np.empty(m, dtype=bool))
+                    accepted=np.empty(m, dtype=bool), available=np.empty(m, dtype=bool))
     dt = truth.dt
     k_prev = 0
     for j, k in enumerate(gnss_idx):
@@ -259,14 +260,20 @@ def run_ekf(truth, imu, gnss_t: np.ndarray, gnss_idx: np.ndarray, gnss_p: np.nda
         k_prev = k
         ekf.propagate_covariance()
         z = gnss_p[j]
-        accept, R = (True, None) if monitor is None else monitor(ekf, j, z)
-        res = ekf.update(z, R) if accept else ekf.innovation(z, R)
+        available = not np.isnan(z).any()
+        if not available:                       # jammed: coast on the INS, P keeps growing
+            accept = False
+            res = UpdateResult(nu=np.full(2, np.nan), S=np.full((2, 2), np.nan), nis=np.nan)
+        else:
+            accept, R = (True, None) if monitor is None else monitor(ekf, j, z)
+            res = ekf.update(z, R) if accept else ekf.innovation(z, R)
         res.accepted = accept
         log.p[j], log.v[j], log.psi[j] = ekf.p, ekf.v, ekf.psi
         log.b_a[j], log.b_g[j] = ekf.b_a, ekf.b_g
         log.P[j] = ekf.P
         log.P_diag[j] = np.diag(ekf.P)
         log.nu[j], log.S[j], log.nis[j], log.accepted[j] = res.nu, res.S, res.nis, accept
+        log.available[j] = available
     return log
 
 

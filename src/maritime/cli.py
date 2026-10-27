@@ -66,6 +66,12 @@ def cmd_b2(args: argparse.Namespace) -> None:
     run_b2(load_config(args.config))
 
 
+def cmd_b3(args: argparse.Namespace) -> None:
+    from maritime.nav.pipeline import run_b3
+
+    run_b3(load_config(args.config))
+
+
 def main(argv: list[str] | None = None) -> None:
     # Windows consoles default to cp1252, which cannot print polars' table borders
     sys.stdout.reconfigure(encoding="utf-8")
@@ -92,6 +98,8 @@ def main(argv: list[str] | None = None) -> None:
        .set_defaults(func=cmd_b1)
     sub.add_parser("b2", help="INS/GNSS EKF: Monte Carlo accuracy and consistency") \
        .set_defaults(func=cmd_b2)
+    sub.add_parser("b3", help="GNSS attacks (jump, slow drift, jamming) on the unprotected EKF") \
+       .set_defaults(func=cmd_b3)
 
     args = parser.parse_args(argv)
     args.func(args)

@@ -195,3 +195,17 @@ b2:
     - {name: white_gnss, gnss_corr_m: 0.0, gnss_sigma_scale: 1.0}
     - {name: realistic_gnss, gnss_sigma_scale: 1.0}
     - {name: realistic_gnss_inflated_R, gnss_sigma_scale: 1.5}
+
+# ---------------------------------------------------------------- B3
+attacks:
+  start_s: 2400                # 40 min in, on the final straight, filter fully converged
+  duration_s: 900              # 15 min
+  direction_deg: 90            # spoofed offset towards east (cross-track for a NE-bound ship)
+  jump: {magnitude_m: 180}     # abrupt capture...
+  drift: {rate_mps: 0.2}       # ...vs slow pull-off reaching the same 180 m (0.2 m/s ~ 0.4 kn)
+
+b3:
+  mc_runs: 20
+  chi2_gate: 9.21              # per-epoch NIS test, chi-square 2 dof, 99 %
+  drift_sweep_mps: [0.05, 0.1, 0.2, 0.3, 0.5, 1.0]
+  drift_sweep_runs: 10

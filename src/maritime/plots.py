@@ -459,6 +459,79 @@ def ekf_consistency_plot(truth, mcs: dict, settle: int, out_png: Path) -> Path:
     return out_png
 
 
+def attack_overview_plot(mcs: dict, attacks: dict, gate: float, out_png: Path,
+                         title: str = "Unprotected EKF under GNSS attack") -> Path:
+    """One row per attack: horizontal error (median and 5-95 % over runs) and NIS (run 0)."""
+    plt = _plt()
+    names = list(attacks)
+    fig, ax = plt.subplots(len(names), 2, figsize=(14, 3.4 * len(names)), sharex=True)
+    for i, name in enumerate(names):
+        mc, att = mcs[name], attacks[name]
+        t = mc["t"] / 60
+        for a in ax[i]:
+            a.axvspan(att.start_s / 60, att.end_s / 60, color="tab:red", alpha=0.08)
+        lo, med, hi = np.percentile(mc["err"], [5, 50, 95], axis=0)
+        ax[i, 0].fill_between(t, lo, hi, color="tab:blue", alpha=0.2)
+        ax[i, 0].plot(t, med, color="tab:blue", lw=1.3, label="filter error (median, 5-95 %)")
+        if "none" in mcs:
+            ax[i, 0].plot(t, np.median(mcs["none"]["err"], axis=0), color="0.4", lw=0.8,
+                          ls="--", label="no attack (median)")
+        ax[i, 0].set_yscale("log")
+        ax[i, 0].set_ylim(0.3, None)
+        ax[i, 0].set_ylabel("horizontal error [m]")
+        ax[i, 0].set_title(f"{name}: position error")
+        ax[i, 0].legend(fontsize=8, loc="upper left")
+        nis = mc["nis"][0]
+        acc = mc["accepted"][0]
+        ax[i, 1].plot(t, nis, color="k", lw=0.6, label="NIS (run 0)")
+        if (~acc & ~np.isnan(nis)).any():
+            ax[i, 1].plot(t[~acc & ~np.isnan(nis)], nis[~acc & ~np.isnan(nis)], "rx", ms=3,
+                          label="fix rejected")
+        ax[i, 1].axhline(gate, color="tab:red", ls="--", label=f"chi-square 99 % = {gate}")
+        ax[i, 1].set_yscale("log")
+        ax[i, 1].set_ylabel("NIS")
+        ax[i, 1].set_title(f"{name}: innovation test statistic")
+        ax[i, 1].legend(fontsize=8, loc="upper left")
+    for a in ax[-1]:
+        a.set_xlabel("time [min]  (red band = attack window)")
+    for a in ax.flat:
+        a.grid(which="both", alpha=0.3)
+    fig.suptitle(title)
+    fig.tight_layout()
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=150)
+    plt.close(fig)
+    return out_png
+
+
+def drift_stealth_plot(sweep: pl.DataFrame, false_alarm_pct: float, out_png: Path) -> Path:
+    """How visible is a slow drift to the per-epoch chi-square test, vs how far it pulls."""
+    plt = _plt()
+    r = sweep["rate_mps"].to_numpy()
+    fig, ax = plt.subplots(figsize=(9, 5.5))
+    ax.plot(r, sweep["nis_over_gate_pct"], "o-", color="tab:red",
+            label="attack epochs with NIS > chi-square 99 %")
+    ax.axhline(false_alarm_pct, color="0.4", ls="--",
+               label=f"same rate with no attack ({false_alarm_pct:.1f} %)")
+    ax.set_xscale("log")
+    ax.set_xlabel("spoofed drift rate [m/s]")
+    ax.set_ylabel("per-epoch detections [%]", color="tab:red")
+    ax2 = ax.twinx()
+    ax2.plot(r, sweep["filter_err_at_end_m"], "s--", color="tab:blue",
+             label="filter error at end of 15 min attack")
+    ax2.set_ylabel("filter position error at end [m]", color="tab:blue")
+    ax.set_title("Slow GNSS drift: the filter follows it, the per-epoch test barely notices")
+    h1, l1 = ax.get_legend_handles_labels()
+    h2, l2 = ax2.get_legend_handles_labels()
+    ax.legend(h1 + h2, l1 + l2, fontsize=8, loc="upper left")
+    ax.grid(which="both", alpha=0.3)
+    fig.tight_layout()
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=150)
+    plt.close(fig)
+    return out_png
+
+
 def gap_category_chart(gaps: pl.DataFrame, out_png: Path) -> Path:
     """Left: why gaps were explained away. Right: duration distribution of dark gaps."""
     plt = _plt()

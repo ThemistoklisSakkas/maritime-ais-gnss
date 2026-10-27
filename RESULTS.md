@@ -250,5 +250,45 @@ Linearisation verified by a unit test: nonlinear error propagation matches Φ·�
 - **Observability:** heading σ drops sharply in each turn and grows on straight legs; the
   gyro bias is learned in steps, only during manoeuvres (`b2_single_run.png`).
 
+## B3 – GNSS attacks on the unprotected EKF
+
+Attacks on the GNSS position stream, 40–55 min (15 min, final straight leg, filter converged),
+offset towards east. **20 Monte Carlo runs per case, same seeds across cases** (paired).
+Tactical MEMS IMU, realistic GNSS. Per-epoch test: NIS > χ²₂(99 %) = 9.21.
+Output: `outputs/tables/b3_summary.json`, `b3_drift_stealth.csv`, figures
+`b3_attacks_unprotected.png`, `b3_drift_stealth.png`.
+
+| Case | Max error during attack (median / 95 %) | Error at attack end | Mean error 5 min after | Attack epochs with NIS > 9.21 |
+|---|---:|---:|---:|---:|
+| No attack | 2.1 m mean, 4.1 m p95 | — | — | 0.14 % (all epochs) |
+| **Jump 180 m** | 233 m / 236 m | 180 m | 28.9 m | 32.4 % |
+| **Slow drift 0.2 m/s** (→ 180 m) | 180 m / 182 m | 180 m | 28.6 m | **0.4 %** |
+| **Jamming 15 min** | 187 m / 289 m | 187 m | **1.9 m** | n/a (no fixes) |
+
+- **Jump:** NIS spikes to ~10⁴ at the step — trivially detectable — but the unprotected filter
+  accepts it, is captured within 2–3 min (NIS returns to normal while 180 m off) and
+  overshoots to 233 m because velocity and biases are corrupted.
+- **Slow drift (0.2 m/s ≈ 0.4 kn):** the filter follows the full 180 m while the per-epoch
+  χ² test fires on 0.4 % of attack epochs, indistinguishable from no attack (0.14 %).
+- **After either spoofing attack ends**, the return to true GNSS is itself a step: the filter
+  rings for ~5 min (29 m mean error) because velocity and bias states were corrupted.
+- **Jamming** is the least dangerous: the filter knows it has no GNSS and coasts on an INS
+  calibrated before the outage — **187 m after 15 min vs 1,487 m** for the same IMU
+  uncalibrated (B1 free inertial), **8× better** — and re-converges immediately.
+
+**Drift stealth sweep** (10 runs per rate, `b3_drift_stealth.png`):
+
+| Drift rate | Offset after 15 min | Filter error at end | Attack epochs with NIS > 9.21 |
+|---|---:|---:|---:|
+| 0.05 m/s | 45 m | 45 m | 0.1 % |
+| 0.1 m/s | 90 m | 90 m | 0.1 % |
+| **0.2 m/s** | **180 m** | **180 m** | **0.3 %** |
+| 0.3 m/s | 270 m | 270 m | 0.9 % |
+| 0.5 m/s | 450 m | 450 m | 4.8 % |
+| 1.0 m/s | 900 m | 899 m | 18.1 % |
+
+→ The filter is dragged along the full spoofed offset at every rate; below ~0.3 m/s the
+per-epoch innovation test is effectively blind. This motivates the windowed test in B4.
+
 ## B – INS/GNSS resilience (Monte Carlo)
 _pending_

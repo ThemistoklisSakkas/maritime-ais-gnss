@@ -34,7 +34,7 @@ written to `data/` (git-ignored); figures and tables to `outputs/`.
 | A5 | ETA prediction | done |
 | B1 | Trajectory and sensor simulation | done |
 | B2 | Loosely coupled EKF | done |
-| B3 | Attack injection | – |
+| B3 | Attack injection | done |
 | B4 | Innovation-based detection | – |
 | B5 | Monte Carlo evaluation | – |
 | C | Dashboard | – |

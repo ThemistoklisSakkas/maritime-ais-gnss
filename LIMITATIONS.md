@@ -120,5 +120,12 @@ Known caveats, added as each phase is built.
 - NIS cannot reveal this mismatch: with correlated GNSS error the average NIS is *below* its
   expected value (1.4 vs 2) while NEES is ~10× too high. Innovation monitoring sees only
   what disagrees with the filter's own prediction — the same blind spot a slow spoofer uses.
+- **Attack model (B3)** is a simple offset on the position output. A real spoofer must first
+  capture the receiver (lift-off, which may itself cause signal-quality anomalies), and it
+  also shifts velocity and clock; jamming in reality often degrades accuracy before losing
+  lock. We do not model receiver tracking loops, C/N0, AGC or multi-constellation checks,
+  which are real-world detection layers in addition to the INS-based test studied here.
+- The attacker here does not try to match the ship's own manoeuvres or to stay under a
+  known detector threshold; an adaptive attacker is harder to detect than these scenarios.
 - Loosely coupled, position-only: heading is unobservable on straight constant-speed legs
   (no gyrocompass or GNSS-heading aiding modelled), so its uncertainty grows between turns.

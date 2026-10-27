@@ -9,6 +9,7 @@ import numpy as np
 import polars as pl
 
 from maritime.config import Config
+from maritime.nav.attacks import Attack, apply_attack, attacks_from_config
 from maritime.nav.ekf import EKFParams, error_states, nees, run_ekf
 from maritime.nav.ins import free_inertial_batch
 from maritime.nav.sensors import (
@@ -193,4 +194,106 @@ def run_b2(cfg: Config) -> None:
 
     ekf_single_run_plot(truth, mcs["realistic_gnss"], figs / "b2_single_run.png")
     ekf_consistency_plot(truth, mcs, settle, figs / "b2_consistency.png")
+    _log(f"figures in {figs}")
+
+
+# ---------------------------------------------------------------- B3
+
+def attack_mc(truth: Truth, imu_spec: IMUSpec, gnss_spec: GNSSSpec, params: EKFParams,
+              attack: Attack | None, runs: int, seed: int, monitor_factory=None) -> dict:
+    """Monte Carlo of one attack. Same seeds for every attack -> paired comparisons.
+
+    monitor_factory() must return a fresh monitor per run (B4); None = unprotected filter.
+    Returns per-run horizontal error, NIS, accepted/available flags and the attack mask.
+    """
+    out = {"err": [], "nis": [], "accepted": [], "available": [], "gnss_err": []}
+    for r in range(runs):
+        rng = np.random.default_rng(seed + r)
+        imu = simulate_imu(truth, imu_spec, rng)
+        gnss, mask = apply_attack(simulate_gnss(truth, gnss_spec, rng), attack)
+        mon = monitor_factory() if monitor_factory else None
+        log = run_ekf(truth, imu, gnss.t, gnss.idx, gnss.p, params, rng, monitor=mon)
+        out["err"].append(np.linalg.norm(log.p - truth.p[log.idx], axis=1))
+        out["nis"].append(log.nis)
+        out["accepted"].append(log.accepted)
+        out["available"].append(log.available)
+        out["gnss_err"].append(np.linalg.norm(gnss.p - truth.p[gnss.idx], axis=1))
+        if r == 0:
+            out["log"], out["monitor"] = log, mon
+    for k in ("err", "nis", "accepted", "available", "gnss_err"):
+        out[k] = np.stack(out[k])
+    out["mask"], out["t"] = mask, log.t
+    return out
+
+
+def attack_metrics(mc: dict, attack: Attack | None, gate: float, recovery_s: int = 300) -> dict:
+    t, mask, err = mc["t"], mc["mask"], mc["err"]
+    if attack is None:
+        win = (t >= 600)
+        return {"mean_err_m": round(float(err[:, win].mean()), 2),
+                "p95_err_m": round(float(np.percentile(err[:, win], 95)), 2),
+                "nis_over_gate_pct": round(100 * float(np.nanmean(mc["nis"][:, win] > gate)), 2)}
+    after = (t >= attack.end_s) & (t < attack.end_s + recovery_s)
+    end_i = int(np.flatnonzero(mask)[-1])
+    nis_att = mc["nis"][:, mask]
+    return {
+        "max_err_during_median_m": round(float(np.median(err[:, mask].max(axis=1))), 1),
+        "max_err_during_p95_m": round(float(np.percentile(err[:, mask].max(axis=1), 95)), 1),
+        "err_at_attack_end_median_m": round(float(np.median(err[:, end_i])), 1),
+        "mean_err_5min_after_m": round(float(err[:, after].mean()), 1),
+        "nis_over_gate_pct": (None if np.isnan(nis_att).all() else
+                              round(100 * float(np.nanmean(nis_att > gate)), 1)),
+    }
+
+
+def run_b3(cfg: Config) -> None:
+    from maritime.plots import attack_overview_plot, drift_stealth_plot
+
+    s, b3 = cfg.section("sim"), cfg.section("b3")
+    tables, figs = cfg.paths.tables, cfg.paths.figures
+    cfg.paths.ensure()
+    truth = scenario_truth(cfg)
+    imu_spec = IMUSpec.from_dict(s["imu_grades"][s["imu_grade"]])
+    gnss_spec = GNSSSpec.from_dict(s["gnss"])
+    params = ekf_params(cfg, imu_spec, gnss_spec)
+    attacks = attacks_from_config(cfg.section("attacks"))
+    gate, runs = float(b3["chi2_gate"]), int(b3["mc_runs"])
+
+    mcs, metrics = {}, {}
+    for name, att in [("none", None), *attacks.items()]:
+        t0 = time.perf_counter()
+        mcs[name] = attack_mc(truth, imu_spec, gnss_spec, params, att, runs, cfg.seed)
+        metrics[name] = attack_metrics(mcs[name], att, gate)
+        _log(f"{name}: {runs} runs in {time.perf_counter() - t0:.0f} s -> {metrics[name]}")
+
+    # how stealthy is a slow drift? per-epoch detectability vs rate
+    sweep = []
+    base = attacks["drift"]
+    for rate in b3["drift_sweep_mps"]:
+        att = Attack("drift", base.start_s, base.duration_s, base.direction_deg, rate_mps=rate)
+        mc = attack_mc(truth, imu_spec, gnss_spec, params, att, int(b3["drift_sweep_runs"]),
+                       cfg.seed + 1000)
+        m = attack_metrics(mc, att, gate)
+        sweep.append({"rate_mps": rate, "offset_at_end_m": rate * att.duration_s,
+                      "nis_over_gate_pct": m["nis_over_gate_pct"],
+                      "filter_err_at_end_m": m["err_at_attack_end_median_m"]})
+        _log(f"drift sweep {rate} m/s -> {sweep[-1]}")
+    sweep = pl.DataFrame(sweep)
+    sweep.write_csv(tables / "b3_drift_stealth.csv")
+
+    # jamming reference: the same outage length with an UNCALIBRATED INS (B1 free inertial)
+    fi = free_inertial_drift(truth, imu_spec, 200, cfg.seed + 2000)
+    fi_end = float(np.median(fi[:, int(round(base.duration_s / truth.dt))]))
+
+    summary = {"runs": runs, "chi2_gate": gate,
+               "attack_window_s": [base.start_s, base.end_s], "unprotected": metrics,
+               "jamming_vs_uncalibrated_free_inertial_m": {
+                   "ekf_calibrated_median": metrics["jamming"]["err_at_attack_end_median_m"],
+                   "free_inertial_median": round(fi_end, 1)},
+               "drift_sweep": sweep.to_dicts()}
+    (tables / "b3_summary.json").write_text(json.dumps(summary, indent=2))
+    _log(f"summary: {json.dumps(summary, indent=2)}")
+    attack_overview_plot(mcs, attacks, gate, figs / "b3_attacks_unprotected.png")
+    drift_stealth_plot(sweep, metrics["none"]["nis_over_gate_pct"],
+                       figs / "b3_drift_stealth.png")
     _log(f"figures in {figs}")

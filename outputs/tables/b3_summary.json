@@ -1,0 +1,78 @@
+{
+  "runs": 20,
+  "chi2_gate": 9.21,
+  "attack_window_s": [
+    2400.0,
+    3300.0
+  ],
+  "unprotected": {
+    "none": {
+      "mean_err_m": 2.06,
+      "p95_err_m": 4.05,
+      "nis_over_gate_pct": 0.14
+    },
+    "jump": {
+      "max_err_during_median_m": 232.8,
+      "max_err_during_p95_m": 235.7,
+      "err_at_attack_end_median_m": 179.7,
+      "mean_err_5min_after_m": 28.9,
+      "nis_over_gate_pct": 32.4
+    },
+    "drift": {
+      "max_err_during_median_m": 179.5,
+      "max_err_during_p95_m": 182.4,
+      "err_at_attack_end_median_m": 179.5,
+      "mean_err_5min_after_m": 28.6,
+      "nis_over_gate_pct": 0.4
+    },
+    "jamming": {
+      "max_err_during_median_m": 187.1,
+      "max_err_during_p95_m": 289.1,
+      "err_at_attack_end_median_m": 187.1,
+      "mean_err_5min_after_m": 1.9,
+      "nis_over_gate_pct": null
+    }
+  },
+  "jamming_vs_uncalibrated_free_inertial_m": {
+    "ekf_calibrated_median": 187.1,
+    "free_inertial_median": 1486.8
+  },
+  "drift_sweep": [
+    {
+      "rate_mps": 0.05,
+      "offset_at_end_m": 45.0,
+      "nis_over_gate_pct": 0.1,
+      "filter_err_at_end_m": 45.1
+    },
+    {
+      "rate_mps": 0.1,
+      "offset_at_end_m": 90.0,
+      "nis_over_gate_pct": 0.1,
+      "filter_err_at_end_m": 90.0
+    },
+    {
+      "rate_mps": 0.2,
+      "offset_at_end_m": 180.0,
+      "nis_over_gate_pct": 0.3,
+      "filter_err_at_end_m": 179.8
+    },
+    {
+      "rate_mps": 0.3,
+      "offset_at_end_m": 270.0,
+      "nis_over_gate_pct": 0.9,
+      "filter_err_at_end_m": 269.7
+    },
+    {
+      "rate_mps": 0.5,
+      "offset_at_end_m": 450.0,
+      "nis_over_gate_pct": 4.8,
+      "filter_err_at_end_m": 449.5
+    },
+    {
+      "rate_mps": 1.0,
+      "offset_at_end_m": 900.0,
+      "nis_over_gate_pct": 18.1,
+      "filter_err_at_end_m": 899.0
+    }
+  ]
+}
