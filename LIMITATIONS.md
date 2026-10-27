@@ -127,5 +127,24 @@ Known caveats, added as each phase is built.
   which are real-world detection layers in addition to the INS-based test studied here.
 - The attacker here does not try to match the ship's own manoeuvres or to stay under a
   known detector threshold; an adaptive attacker is harder to detect than these scenarios.
+- **Integrity monitor (B4) detection limit:** the backup-INS window test separates a drift
+  from INS error only when the drift rate clearly exceeds the filter's velocity/heading
+  uncertainty. With a tactical MEMS IMU, 0.2 m/s is at the threshold (detected in ~6 of 10
+  runs) and 0.1 m/s is not detected. A navigation-grade IMU or an independent velocity
+  reference lowers this limit (B5).
+- **A missed drift makes the aftermath worse.** If the drift escapes detection, the moment
+  the spoofer stops, the genuine GNSS appears as a jump and is rejected; the monitor then
+  coasts away from the truth. No algorithm can tell "GNSS is lying" from "my INS has
+  drifted" once they disagree for long; we use a 30-min timeout that re-initialises from GNSS
+  with an operator alert. Shorter timeouts re-admit a persistent spoofer (verified: a 10-min
+  timeout let a 15-min jump attack back in). Resolving this needs an independent reference
+  (radar/visual fix, eLoran, multi-antenna or multi-constellation checks).
+- The window threshold is calibrated by fitting a scaled χ²(2) to 2,000 attack-free tests
+  and extrapolating to p_fa = 1e-4; the empirical tail is slightly heavier (1 of 2,000 tests
+  above the threshold). The scaling holds for this scenario/IMU/GNSS model only.
+- The speed-log aiding assumes the current stays as estimated before the attack and the
+  ship does not sway; tidal streams turning during a long outage would bias it.
+- Attack timing interacts with the backup schedule: a jump that coincides with a backup
+  maturing is caught by the window test in the same second as the gate would catch it.
 - Loosely coupled, position-only: heading is unobservable on straight constant-speed legs
   (no gyrocompass or GNSS-heading aiding modelled), so its uncertainty grows between turns.

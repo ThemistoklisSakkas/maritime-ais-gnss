@@ -290,5 +290,40 @@ Output: `outputs/tables/b3_summary.json`, `b3_drift_stealth.csv`, figures
 → The filter is dragged along the full spoofed offset at every rate; below ~0.3 m/s the
 per-epoch innovation test is effectively blind. This motivates the windowed test in B4.
 
+## B4 – Integrity monitoring: detect, reject, coast, recover
+
+Monitor = per-epoch χ² gate (NIS > 13.82, 3 consecutive → declare) + **backup-INS window
+test** (a snapshot every 30 s runs on the IMU only; at age 120 s the GNSS fix is tested
+against it, T = r′S⁻¹r) with **rollback** onto the clean backup on detection. While GNSS is
+distrusted: coasting with **speed-log + non-holonomic aiding** (current estimated while GNSS
+was trusted), 5-min quarantine, re-admission after 10 consecutive consistent fixes within
+60 m, 30-min timeout with operator alert. Output: `outputs/tables/b4_summary.json`, figures
+`b4_protected_vs_unprotected.png`, `b4_window_test_calibration.png`.
+
+**Calibration** (20 attack-free runs, independent seeds, 2,000 window tests): mean T = 6.94
+vs 2 for white-noise theory → fitted scale α = 3.47 → threshold **63.9** for p_fa = 1e-4 per
+test; 1 of 2,000 calibration tests (0.05 %) exceeded it.
+
+**Evaluation** (10 runs per case, same seeds with and without the monitor):
+
+| Case | Unprotected: error at end / 5 min after | Protected: error at end / 5 min after | Detection |
+|---|---:|---:|---|
+| No attack | 2.1 m mean | 2.1 m mean (unchanged) | **0 false alarms in 10 h** |
+| **Jump 180 m** | 180 m / 29 m | **34 m / 3.1 m** | **10/10, 1 s** |
+| **Drift 0.2 m/s**, detected runs | 180 m / 29 m | **36 m / 2.8 m** | **6/10**, median 121 s (max 211 s) |
+| Drift 0.2 m/s, missed runs | 180 m / 29 m | 181 m / **209 m** | 4/10 missed during attack |
+| Jamming 15 min | 187 m / 1.9 m | 187 m / 1.9 m | not needed (no fixes) |
+
+- **Jumps** are neutralised: detected in the first second, the filter coasts on INS + speed
+  log at ~10–35 m instead of being captured at 180–233 m, and re-admits GNSS within minutes
+  of the attack ending.
+- **Slow drift** at 0.2 m/s sits at the detection limit of a tactical MEMS IMU. When caught,
+  rollback removes the contamination (36 m vs 180 m). When missed, the end of the attack
+  looks like a jump of the genuine signal, which is then rejected: protection makes the
+  aftermath worse (209 m vs 29 m). This is the fundamental "who is lying, GNSS or INS?"
+  ambiguity; it needs an independent reference or the operator (see LIMITATIONS).
+- Development findings kept as tests: re-admission without a quarantine let the drifting
+  spoofer straight back in; a 10-min timeout re-admitted a 15-min jump spoofer.
+
 ## B – INS/GNSS resilience (Monte Carlo)
 _pending_

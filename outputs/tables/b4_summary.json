@@ -1,0 +1,126 @@
+{
+  "runs_per_case": 10,
+  "calibration": {
+    "threshold": 63.919,
+    "alpha": 3.47,
+    "n_tests": 2000,
+    "mean_T": 6.94,
+    "p99_T": 32.481,
+    "max_T": 64.227,
+    "calib_exceed_pct": 0.05
+  },
+  "cases": {
+    "none": {
+      "unprotected": {
+        "mean_err_m": 2.09,
+        "p95_err_m": 4.01,
+        "nis_over_gate_pct": 0.01
+      },
+      "protected": {
+        "mean_err_m": 2.09,
+        "p95_err_m": 4.01,
+        "nis_over_gate_pct": 0.01
+      },
+      "detection": {
+        "runs_with_false_alarm": 0,
+        "false_alarms_per_hour": 0.0
+      }
+    },
+    "jump": {
+      "unprotected": {
+        "max_err_during_median_m": 233.4,
+        "max_err_during_p95_m": 236.3,
+        "err_at_attack_end_median_m": 179.5,
+        "mean_err_5min_after_m": 29.0,
+        "nis_over_gate_pct": 30.6
+      },
+      "protected": {
+        "max_err_during_median_m": 34.0,
+        "max_err_during_p95_m": 53.2,
+        "err_at_attack_end_median_m": 34.0,
+        "mean_err_5min_after_m": 9.6,
+        "nis_over_gate_pct": 100.0
+      },
+      "detection": {
+        "detected_during_attack_runs": "10/10",
+        "detected_only_at_attack_end_runs": 0,
+        "detection_delay_median_s": 1.0,
+        "detection_delay_max_s": 1.0,
+        "detected_by": {
+          "gate": 0,
+          "window": 10
+        },
+        "false_alarm_before_attack_runs": 0,
+        "runs_with_timeout_alert": 0,
+        "err_at_end_detected_runs_m": 34.0,
+        "err_at_end_missed_runs_m": null,
+        "err_5min_after_detected_runs_m": 3.1,
+        "err_5min_after_missed_runs_m": null
+      }
+    },
+    "drift": {
+      "unprotected": {
+        "max_err_during_median_m": 179.3,
+        "max_err_during_p95_m": 182.5,
+        "err_at_attack_end_median_m": 179.3,
+        "mean_err_5min_after_m": 28.7,
+        "nis_over_gate_pct": 0.0
+      },
+      "protected": {
+        "max_err_during_median_m": 109.0,
+        "max_err_during_p95_m": 182.0,
+        "err_at_attack_end_median_m": 109.0,
+        "mean_err_5min_after_m": 111.9,
+        "nis_over_gate_pct": 50.5
+      },
+      "detection": {
+        "detected_during_attack_runs": "6/10",
+        "detected_only_at_attack_end_runs": 4,
+        "detection_delay_median_s": 121.0,
+        "detection_delay_max_s": 211.0,
+        "detected_by": {
+          "gate": 0,
+          "window": 6
+        },
+        "false_alarm_before_attack_runs": 0,
+        "runs_with_timeout_alert": 0,
+        "err_at_end_detected_runs_m": 36.1,
+        "err_at_end_missed_runs_m": 180.9,
+        "err_5min_after_detected_runs_m": 2.8,
+        "err_5min_after_missed_runs_m": 208.6
+      }
+    },
+    "jamming": {
+      "unprotected": {
+        "max_err_during_median_m": 187.1,
+        "max_err_during_p95_m": 311.5,
+        "err_at_attack_end_median_m": 187.1,
+        "mean_err_5min_after_m": 1.9,
+        "nis_over_gate_pct": null
+      },
+      "protected": {
+        "max_err_during_median_m": 187.1,
+        "max_err_during_p95_m": 311.5,
+        "err_at_attack_end_median_m": 187.1,
+        "mean_err_5min_after_m": 1.9,
+        "nis_over_gate_pct": null
+      },
+      "detection": {
+        "detected_during_attack_runs": "0/10",
+        "detected_only_at_attack_end_runs": 0,
+        "detection_delay_median_s": null,
+        "detection_delay_max_s": null,
+        "detected_by": {
+          "gate": 0,
+          "window": 0
+        },
+        "false_alarm_before_attack_runs": 0,
+        "runs_with_timeout_alert": 0,
+        "err_at_end_detected_runs_m": null,
+        "err_at_end_missed_runs_m": 187.1,
+        "err_5min_after_detected_runs_m": null,
+        "err_5min_after_missed_runs_m": 2.0
+      }
+    }
+  }
+}

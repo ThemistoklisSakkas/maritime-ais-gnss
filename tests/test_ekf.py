@@ -132,3 +132,17 @@ def test_filter_is_consistent_with_white_gnss_noise():
     assert (avg > hi).mean() < 0.025                            # never overconfident
     assert (avg > lo).mean() > 0.7                              # at most mildly conservative
     assert avg.mean() == pytest.approx(N_STATES, rel=0.2)
+
+
+def test_block_propagation_equals_sample_by_sample():
+    rng = np.random.default_rng(9)
+    f = rng.normal(0, 0.05, (10, 2))
+    w = rng.normal(0, 0.01, 10)
+    a = InsGnssEKF(params(), p=np.array([1.0, 2.0]), v=np.array([5.0, 3.0]), psi=0.7,
+                   b_a=np.array([1e-3, -2e-3]), b_g=1e-5)
+    b = a.snapshot()
+    for i in range(10):
+        a.propagate(f[i], w[i], DT)
+    b.propagate_block(f, w, DT)
+    assert np.allclose(a.p, b.p) and np.allclose(a.v, b.v) and a.psi == pytest.approx(b.psi)
+    assert np.allclose(a._sum_a, b._sum_a) and a._sum_psi == pytest.approx(b._sum_psi)

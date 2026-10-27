@@ -161,12 +161,42 @@ class InsGnssEKF:
         self._n += 1
         self._t += dt
 
+    def propagate_block(self, f_meas: np.ndarray, w_meas: np.ndarray, dt: float) -> None:
+        """Same mechanization as `propagate`, for a block of IMU samples at once.
+
+        Heading, velocity and position are running sums, so a block of n samples costs a few
+        array operations instead of n Python iterations. Used between GNSS epochs.
+        """
+        n = len(w_meas)
+        if n == 0:
+            return
+        w = w_meas - self.b_g
+        psi = self.psi + np.cumsum(w) * dt
+        pm = 0.5 * (np.concatenate([[self.psi], psi[:-1]]) + psi)
+        fx, fy = f_meas[:, 0] - self.b_a[0], f_meas[:, 1] - self.b_a[1]
+        c, s = np.cos(pm), np.sin(pm)
+        a = np.column_stack([c * fx - s * fy, s * fx + c * fy])
+        v = self.v + np.cumsum(a, axis=0) * dt
+        v_prev = np.vstack([self.v, v[:-1]])
+        self.p = self.p + np.sum(0.5 * (v_prev + v), axis=0) * dt
+        self.v, self.psi = v[-1].copy(), float(psi[-1])
+        self._sum_a += a.sum(axis=0)
+        self._sum_psi += float(pm.sum())
+        self._n += n
+        self._t += n * dt
+
     def propagate_covariance(self) -> None:
         """Propagate P over the time accumulated since the last call (GNSS epoch rate)."""
         if self._n == 0:
             return
         F, G = error_dynamics(self._sum_a / self._n, self._sum_psi / self._n)
         Phi, Qd = discretize(F, G, self.Qc, self._t)
+        self.last_Phi, self.last_Qd, self.last_dt = Phi, Qd, self._t
+        self.apply_transition(Phi, Qd)
+
+    def apply_transition(self, Phi: np.ndarray, Qd: np.ndarray) -> None:
+        """P <- Phi P Phi' + Qd and reset the interval accumulators. Lets backup INS copies on
+        the same trajectory reuse the main filter's Phi instead of rebuilding it."""
         self.P = Phi @ self.P @ Phi.T + Qd
         self._sum_a[:] = 0.0
         self._sum_psi, self._n, self._t = 0.0, 0, 0.0
@@ -181,16 +211,53 @@ class InsGnssEKF:
         return UpdateResult(nu=nu, S=S, nis=float(nu @ np.linalg.solve(S, nu)))
 
     def update(self, z: np.ndarray, R: np.ndarray | None = None) -> UpdateResult:
-        H = self.H
+        """GNSS position update."""
         R = self.R if R is None else R
-        res = self.innovation(z, R)
-        K = self.P @ H.T @ np.linalg.inv(res.S)
-        dx = K @ res.nu
+        return self.update_generic(z - self.p, self.H, R)
+
+    def update_generic(self, nu: np.ndarray, H: np.ndarray, R: np.ndarray) -> UpdateResult:
+        """Kalman update from an innovation nu = z - h(x_hat) with H = -dh/dx (the minus sign
+        because the error state is estimate minus truth)."""
+        S = H @ self.P @ H.T + R
+        K = self.P @ H.T @ np.linalg.inv(S)
+        dx = K @ nu
         IKH = np.eye(N_STATES) - K @ H
         self.P = IKH @ self.P @ IKH.T + K @ R @ K.T           # Joseph form
         self.P = 0.5 * (self.P + self.P.T)
         self._correct(dx)
-        return res
+        return UpdateResult(nu=nu, S=S, nis=float(nu @ np.linalg.solve(S, nu)))
+
+    def update_water_speed(self, u_log: float, current: np.ndarray, sigma_fwd: float,
+                           sigma_lat: float) -> UpdateResult:
+        """Speed-log + non-holonomic aiding, used while GNSS is distrusted.
+
+        The water-referenced velocity in the body frame is predicted as
+            h(x) = C(psi)^T (v - c) = [forward, lateral]
+        and observed as [u_log, 0]: the log gives forward speed through the water, and a
+        ship does not slide sideways through the water (no sway, small drift angle). The
+        current c is not a state: it is the value estimated while GNSS was still trusted,
+        and its uncertainty goes into R.
+        """
+        c, s = math.cos(self.psi), math.sin(self.psi)
+        Ct = np.array([[c, s], [-s, c]])
+        dCt = np.array([[-s, c], [-c, -s]])                   # d(C^T)/dpsi
+        w = self.v - current
+        h = Ct @ w
+        Jh = np.zeros((2, N_STATES))
+        Jh[:, IDX_V] = Ct
+        Jh[:, IDX_PSI] = dCt @ w
+        return self.update_generic(np.array([u_log, 0.0]) - h, -Jh,
+                                   np.diag([sigma_fwd ** 2, sigma_lat ** 2]))
+
+    def snapshot(self) -> InsGnssEKF:
+        """Independent copy (state and covariance), e.g. a backup INS for integrity tests."""
+        return InsGnssEKF(self.params, p=self.p.copy(), v=self.v.copy(), psi=self.psi,
+                          b_a=self.b_a.copy(), b_g=self.b_g, P=self.P.copy())
+
+    def restore(self, other: InsGnssEKF) -> None:
+        """Roll this filter back onto another solution (e.g. an uncontaminated backup)."""
+        self.p, self.v, self.psi = other.p.copy(), other.v.copy(), other.psi
+        self.b_a, self.b_g, self.P = other.b_a.copy(), other.b_g, other.P.copy()
 
     def _correct(self, dx: np.ndarray) -> None:
         """Error = estimate - truth, so the corrected estimate is estimate - error."""
@@ -255,8 +322,7 @@ def run_ekf(truth, imu, gnss_t: np.ndarray, gnss_idx: np.ndarray, gnss_p: np.nda
     dt = truth.dt
     k_prev = 0
     for j, k in enumerate(gnss_idx):
-        for i in range(k_prev + 1, k + 1):
-            ekf.propagate(imu.f_b[i], imu.w[i], dt)
+        ekf.propagate_block(imu.f_b[k_prev + 1:k + 1], imu.w[k_prev + 1:k + 1], dt)
         k_prev = k
         ekf.propagate_covariance()
         z = gnss_p[j]

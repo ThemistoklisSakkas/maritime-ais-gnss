@@ -72,6 +72,12 @@ def cmd_b3(args: argparse.Namespace) -> None:
     run_b3(load_config(args.config))
 
 
+def cmd_b4(args: argparse.Namespace) -> None:
+    from maritime.nav.pipeline import run_b4
+
+    run_b4(load_config(args.config))
+
+
 def main(argv: list[str] | None = None) -> None:
     # Windows consoles default to cp1252, which cannot print polars' table borders
     sys.stdout.reconfigure(encoding="utf-8")
@@ -100,6 +106,8 @@ def main(argv: list[str] | None = None) -> None:
        .set_defaults(func=cmd_b2)
     sub.add_parser("b3", help="GNSS attacks (jump, slow drift, jamming) on the unprotected EKF") \
        .set_defaults(func=cmd_b3)
+    sub.add_parser("b4", help="integrity monitoring: calibrate, detect, protect") \
+       .set_defaults(func=cmd_b4)
 
     args = parser.parse_args(argv)
     args.func(args)

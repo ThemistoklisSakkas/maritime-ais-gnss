@@ -209,3 +209,29 @@ b3:
   chi2_gate: 9.21              # per-epoch NIS test, chi-square 2 dof, 99 %
   drift_sweep_mps: [0.05, 0.1, 0.2, 0.3, 0.5, 1.0]
   drift_sweep_runs: 10
+
+# ---------------------------------------------------------------- B4
+integrity:
+  gate: 13.82                  # per-epoch NIS gate, chi-square 2 dof 99.9 %
+  n_reject: 3                  # consecutive gated fixes -> GNSS declared untrusted
+  window_s: 120                # backup INS compared with GNSS at this age...
+  spawn_s: 30                  # ...one new backup every 30 s (4 alive at a time)
+  pfa_window: 1.0e-4           # per-test false-alarm target for the calibrated threshold
+  n_reaccept: 10               # consecutive consistent fixes to trust GNSS again
+  reaccept_max_m: 60           # and each within 60 m of the coasting solution
+  quarantine_s: 300            # no re-admission for 5 min after a declaration
+  max_coast_s: 1800            # after 30 min distrusted: re-init from GNSS + operator alert.
+                               # Policy trade-off: shorter readmits a persistent spoofer,
+                               # longer leaves a missed-drift snap-back unresolved.
+  log_aiding: true             # speed log + non-holonomic constraint while coasting
+  current_tau_s: 120           # current estimated (smoothed) while GNSS is trusted
+  sigma_current_mps: 0.05
+  sigma_sway_mps: 0.05
+  log_sigma_mps: 0.05
+  log_scale_unc: 0.005
+
+b4:
+  calib_runs: 20               # attack-free runs used ONLY to set the window threshold
+  calib_seed_offset: 5000      # independent of the evaluation seeds
+  calib_skip_s: 600            # ignore the initial convergence
+  mc_runs: 10                  # evaluation runs per case (B5 runs the large study)

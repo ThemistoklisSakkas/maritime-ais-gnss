@@ -532,6 +532,69 @@ def drift_stealth_plot(sweep: pl.DataFrame, false_alarm_pct: float, out_png: Pat
     return out_png
 
 
+def protection_comparison_plot(mcs_u: dict, mcs_p: dict, attacks: dict, out_png: Path) -> Path:
+    """Per attack: median horizontal error with and without integrity monitoring."""
+    plt = _plt()
+    names = list(attacks)
+    fig, ax = plt.subplots(len(names), 1, figsize=(12, 3.3 * len(names)), sharex=True)
+    for a, name in zip(ax, names, strict=True):
+        att, mu, mp = attacks[name], mcs_u[name], mcs_p[name]
+        t = mu["t"] / 60
+        a.axvspan(att.start_s / 60, att.end_s / 60, color="tab:red", alpha=0.08)
+        for mc, color, label in ((mu, "tab:red", "unprotected"), (mp, "tab:blue", "protected")):
+            lo, med, hi = np.percentile(mc["err"], [5, 50, 95], axis=0)
+            a.fill_between(t, lo, hi, color=color, alpha=0.15)
+            a.plot(t, med, color=color, lw=1.4, label=f"{label} (median, 5-95 %)")
+        dets = [next((e.t for e in ev if e.kind == "declared"), None) for ev in mp["events"]]
+        dets = [d for d in dets if d is not None and d >= att.start_s]
+        if dets:
+            a.axvline(np.median(dets) / 60, color="k", ls="--", lw=1,
+                      label=f"median detection (+{np.median(dets) - att.start_s:.0f} s)")
+        a.set_yscale("log")
+        a.set_ylim(0.3, None)
+        a.set_ylabel("horizontal error [m]")
+        a.set_title(name)
+        a.grid(which="both", alpha=0.3)
+        a.legend(fontsize=8, loc="upper left")
+    ax[-1].set_xlabel("time [min]  (red band = attack window)")
+    fig.suptitle("Integrity monitoring: chi-square gate + backup-INS window test, "
+                 "rollback and speed-log coasting")
+    fig.tight_layout()
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=150)
+    plt.close(fig)
+    return out_png
+
+
+def window_calibration_plot(cal: dict, out_png: Path) -> Path:
+    """Attack-free distribution of the backup-INS test statistic vs theory and threshold."""
+    from scipy.stats import chi2
+
+    plt = _plt()
+    stats, alpha, thr = cal["stats"], cal["alpha"], cal["threshold"]
+    fig, ax = plt.subplots(figsize=(10, 5.5))
+    bins = np.linspace(0, max(stats.max(), thr) * 1.05, 60)
+    ax.hist(stats, bins=bins, density=True, color="0.6",
+            label=f"attack-free window tests (n = {stats.size})")
+    x = np.linspace(0.01, bins[-1], 400)
+    ax.plot(x, chi2.pdf(x, 2), "k--", label="chi-square(2): white-noise theory (mean 2)")
+    ax.plot(x, chi2.pdf(x / alpha, 2) / alpha, "tab:blue", lw=2,
+            label=f"fitted alpha x chi-square(2), alpha = {alpha:.2f}")
+    ax.axvline(thr, color="tab:red", lw=2, label=f"threshold {thr:.1f} (pfa 1e-4 per test)")
+    ax.set_yscale("log")
+    ax.set_ylim(1e-5, 1)
+    ax.set_xlabel("T = r' S^-1 r  (GNSS vs 2-min backup INS)")
+    ax.set_ylabel("density (log)")
+    ax.set_title("Calibrating the drift detector on attack-free Monte Carlo")
+    ax.legend(fontsize=8)
+    ax.grid(alpha=0.3)
+    fig.tight_layout()
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=150)
+    plt.close(fig)
+    return out_png
+
+
 def gap_category_chart(gaps: pl.DataFrame, out_png: Path) -> Path:
     """Left: why gaps were explained away. Right: duration distribution of dark gaps."""
     plt = _plt()

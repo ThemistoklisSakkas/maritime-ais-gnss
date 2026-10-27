@@ -12,12 +12,19 @@ from maritime.config import Config
 from maritime.nav.attacks import Attack, apply_attack, attacks_from_config
 from maritime.nav.ekf import EKFParams, error_states, nees, run_ekf
 from maritime.nav.ins import free_inertial_batch
+from maritime.nav.integrity import (
+    IntegrityMonitor,
+    MonitorParams,
+    calibrate_window_threshold,
+)
 from maritime.nav.sensors import (
     GNSSSpec,
     IMUSpec,
+    SpeedLogSpec,
     allan_deviation,
     simulate_gnss,
     simulate_imu,
+    simulate_speed_log,
 )
 from maritime.nav.trajectory import Truth, legs_from_config, simulate_truth
 
@@ -203,16 +210,23 @@ def attack_mc(truth: Truth, imu_spec: IMUSpec, gnss_spec: GNSSSpec, params: EKFP
               attack: Attack | None, runs: int, seed: int, monitor_factory=None) -> dict:
     """Monte Carlo of one attack. Same seeds for every attack -> paired comparisons.
 
-    monitor_factory() must return a fresh monitor per run (B4); None = unprotected filter.
+    monitor_factory(truth, imu, gnss, rng) must return a fresh monitor per run (B4);
+    None = unprotected filter.
     Returns per-run horizontal error, NIS, accepted/available flags and the attack mask.
     """
-    out = {"err": [], "nis": [], "accepted": [], "available": [], "gnss_err": []}
+    out = {"err": [], "nis": [], "accepted": [], "available": [], "gnss_err": [],
+           "events": []}
     for r in range(runs):
         rng = np.random.default_rng(seed + r)
         imu = simulate_imu(truth, imu_spec, rng)
         gnss, mask = apply_attack(simulate_gnss(truth, gnss_spec, rng), attack)
-        mon = monitor_factory() if monitor_factory else None
+        mon = None
+        if monitor_factory:
+            # the speed log has its own random stream, so protected and unprotected runs of
+            # the same seed see identical IMU, GNSS and initial errors (paired comparison)
+            mon = monitor_factory(truth, imu, gnss, np.random.default_rng([seed + r, 1]))
         log = run_ekf(truth, imu, gnss.t, gnss.idx, gnss.p, params, rng, monitor=mon)
+        out["events"].append(list(mon.events) if mon else [])
         out["err"].append(np.linalg.norm(log.p - truth.p[log.idx], axis=1))
         out["nis"].append(log.nis)
         out["accepted"].append(log.accepted)
@@ -297,3 +311,130 @@ def run_b3(cfg: Config) -> None:
     drift_stealth_plot(sweep, metrics["none"]["nis_over_gate_pct"],
                        figs / "b3_drift_stealth.png")
     _log(f"figures in {figs}")
+
+
+# ---------------------------------------------------------------- B4
+
+def make_monitor_factory(cfg: Config, threshold: float, calibrate: bool = False):
+    """Factory building a fresh IntegrityMonitor (and its speed log) for each run."""
+    mp = MonitorParams.from_dict(cfg.section("integrity"), threshold)
+    log_spec = SpeedLogSpec.from_dict(cfg.section("sim")["speed_log"])
+
+    def factory(truth: Truth, imu, gnss, rng):
+        log_u = simulate_speed_log(truth, log_spec, rng).u
+        return IntegrityMonitor(mp, imu, gnss.t, gnss.idx, truth.dt, speed_log=log_u,
+                                calibrate=calibrate)
+    return factory
+
+
+def calibrate_monitor(cfg: Config, truth: Truth, imu_spec: IMUSpec, gnss_spec: GNSSSpec,
+                      params: EKFParams) -> dict:
+    """Window-test threshold from attack-free runs (independent seeds), scaled chi-square."""
+    b4, ic = cfg.section("b4"), cfg.section("integrity")
+    stats = []
+    for r in range(int(b4["calib_runs"])):
+        seed = cfg.seed + int(b4["calib_seed_offset"]) + r
+        rng = np.random.default_rng(seed)
+        imu = simulate_imu(truth, imu_spec, rng)
+        gnss = simulate_gnss(truth, gnss_spec, rng)
+        mon = make_monitor_factory(cfg, np.inf, calibrate=True)(
+            truth, imu, gnss, np.random.default_rng([seed, 1]))
+        run_ekf(truth, imu, gnss.t, gnss.idx, gnss.p, params, rng, monitor=mon)
+        stats += [T for t, T in mon.window_stats if t >= float(b4["calib_skip_s"])]
+    stats = np.asarray(stats)
+    thr, alpha = calibrate_window_threshold(stats, float(ic["pfa_window"]))
+    return {"threshold": thr, "alpha": alpha, "n_tests": int(stats.size),
+            "mean_T": float(stats.mean()), "p99_T": float(np.percentile(stats, 99)),
+            "max_T": float(stats.max()),
+            "calib_exceed_pct": float(100 * np.mean(stats > thr)), "stats": stats}
+
+
+def detection_metrics(mc: dict, attack: Attack | None, hours_per_run: float) -> dict:
+    """First declaration per run -> detection rate, delay, false alarms, cause."""
+    firsts = [next((e for e in ev if e.kind == "declared"), None) for ev in mc["events"]]
+    if attack is None:
+        n_decl = sum(sum(e.kind == "declared" for e in ev) for ev in mc["events"])
+        return {"runs_with_false_alarm": sum(f is not None for f in firsts),
+                "false_alarms_per_hour": round(n_decl / (len(firsts) * hours_per_run), 3)}
+    early = [f for f in firsts if f is not None and f.t < attack.start_s]
+    hits = [f for f in firsts if f is not None and f.t >= attack.start_s]
+    during = [f for f in hits if f.t < attack.end_s]
+    delays = [f.t - attack.start_s for f in during]
+    causes = {c: sum(f.cause == c for f in during) for c in ("gate", "window")}
+    return {
+        "detected_during_attack_runs": f"{len(during)}/{len(firsts)}",
+        "detected_only_at_attack_end_runs": len(hits) - len(during),
+        "detection_delay_median_s": float(np.median(delays)) if delays else None,
+        "detection_delay_max_s": float(np.max(delays)) if delays else None,
+        "detected_by": causes,
+        "false_alarm_before_attack_runs": len(early),
+        "runs_with_timeout_alert": sum(any(e.cause == "timeout_alert" for e in ev)
+                                       for ev in mc["events"]),
+        **_split_by_detection(mc, attack, firsts),
+    }
+
+
+def _split_by_detection(mc: dict, attack: Attack, firsts: list) -> dict:
+    """Protected-filter error at the end of the attack, separately for runs where the attack
+    was detected while active and runs where it was missed (medians would hide the split)."""
+    end_i = int(np.flatnonzero(mc["mask"])[-1])
+    det = np.array([f is not None and attack.start_s <= f.t < attack.end_s for f in firsts])
+    err_end = mc["err"][:, end_i]
+    after = (mc["t"] >= attack.end_s) & (mc["t"] < attack.end_s + 300)
+    err_after = mc["err"][:, after].mean(axis=1)
+
+    def med(x):
+        return round(float(np.median(x)), 1) if x.size else None
+    return {"err_at_end_detected_runs_m": med(err_end[det]),
+            "err_at_end_missed_runs_m": med(err_end[~det]),
+            "err_5min_after_detected_runs_m": med(err_after[det]),
+            "err_5min_after_missed_runs_m": med(err_after[~det])}
+
+
+def run_b4(cfg: Config) -> None:
+    from maritime.plots import protection_comparison_plot, window_calibration_plot
+
+    s, b4 = cfg.section("sim"), cfg.section("b4")
+    tables, figs = cfg.paths.tables, cfg.paths.figures
+    cfg.paths.ensure()
+    truth = scenario_truth(cfg)
+    imu_spec = IMUSpec.from_dict(s["imu_grades"][s["imu_grade"]])
+    gnss_spec = GNSSSpec.from_dict(s["gnss"])
+    params = ekf_params(cfg, imu_spec, gnss_spec)
+    attacks = attacks_from_config(cfg.section("attacks"))
+    runs = int(b4["mc_runs"])
+
+    t0 = time.perf_counter()
+    cal = calibrate_monitor(cfg, truth, imu_spec, gnss_spec, params)
+    _log(f"calibration ({b4['calib_runs']} attack-free runs, {cal['n_tests']} window tests, "
+         f"{time.perf_counter() - t0:.0f} s): mean T {cal['mean_T']:.2f} (chi2 theory 2), "
+         f"alpha {cal['alpha']:.2f} -> threshold {cal['threshold']:.1f}")
+    factory = make_monitor_factory(cfg, cal["threshold"])
+
+    results, mcs_u, mcs_p = {}, {}, {}
+    hours = truth.t[-1] / 3600
+    for name, att in [("none", None), *attacks.items()]:
+        t0 = time.perf_counter()
+        mcs_u[name] = attack_mc(truth, imu_spec, gnss_spec, params, att, runs, cfg.seed)
+        mcs_p[name] = attack_mc(truth, imu_spec, gnss_spec, params, att, runs, cfg.seed,
+                                monitor_factory=factory)
+        results[name] = {
+            "unprotected": attack_metrics(mcs_u[name], att, params_gate(cfg)),
+            "protected": attack_metrics(mcs_p[name], att, params_gate(cfg)),
+            "detection": detection_metrics(mcs_p[name], att, hours),
+        }
+        _log(f"{name} ({time.perf_counter() - t0:.0f} s): {results[name]}")
+
+    summary = {"runs_per_case": runs,
+               "calibration": {k: (round(v, 3) if isinstance(v, float) else v)
+                               for k, v in cal.items() if k != "stats"},
+               "cases": results}
+    (tables / "b4_summary.json").write_text(json.dumps(summary, indent=2, default=str))
+    _log(f"summary: {json.dumps(summary, indent=2, default=str)}")
+    protection_comparison_plot(mcs_u, mcs_p, attacks, figs / "b4_protected_vs_unprotected.png")
+    window_calibration_plot(cal, figs / "b4_window_test_calibration.png")
+    _log(f"figures in {figs}")
+
+
+def params_gate(cfg: Config) -> float:
+    return float(cfg.section("integrity")["gate"])
