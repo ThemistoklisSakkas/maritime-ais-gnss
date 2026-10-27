@@ -181,3 +181,17 @@ b1:
   mc_runs: 200                 # free-inertial drift Monte Carlo per grade
   report_times_s: [60, 300, 600, 1800, 3600]
   allan_hours: 6               # static record length for the Allan-deviation check
+
+ekf:
+  init_sigma_pos_m: 3.0        # first GNSS fix
+  init_sigma_vel_mps: 0.3
+  init_sigma_heading_deg: 1.0  # gyrocompass-initialised heading
+  gnss_sigma_scale: 1.0        # R = (scale * GNSS per-axis sigma)^2
+
+b2:
+  mc_runs: 30
+  settle_s: 600                # statistics after the first 10 minutes
+  experiments:                 # same filter, different GNSS truth / tuning
+    - {name: white_gnss, gnss_corr_m: 0.0, gnss_sigma_scale: 1.0}
+    - {name: realistic_gnss, gnss_sigma_scale: 1.0}
+    - {name: realistic_gnss_inflated_R, gnss_sigma_scale: 1.5}

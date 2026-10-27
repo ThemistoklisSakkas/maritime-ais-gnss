@@ -224,5 +224,31 @@ Monte Carlo runs per grade, `b1_free_inertial_drift.png`):
 - Without a Schuler loop (flat Earth) the > 20-min figures overstate real drift; see
   LIMITATIONS.
 
+## B2 – Loosely coupled INS/GNSS EKF
+
+Error-state EKF, 8 states (δp 2, δv 2, δψ, accelerometer bias 2, gyro bias); INS at 10 Hz,
+covariance and GNSS position update at 1 Hz, Joseph form. Tactical MEMS IMU, 1 h scenario,
+**30 Monte Carlo runs per experiment**, statistics after the first 10 min.
+Output: `outputs/tables/b2_summary.json`, figures `b2_single_run.png`, `b2_consistency.png`.
+Linearisation verified by a unit test: nonlinear error propagation matches Φ·δx.
+
+| Experiment | Position RMS | Raw GNSS RMS | Heading RMS | Accel bias RMS | Gyro bias RMS | Avg NEES (8) | Avg NIS (2) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| White GNSS noise | **0.59 m** | 2.99 m | 0.53° | 0.016 mg | 1.96 °/h | **6.8** (0 % epochs above band) | **1.98** (95 % in band) |
+| Realistic GNSS (white + GM τ = 60 s) | 2.31 m | 2.99 m | 0.78° | 0.027 mg | 2.42 °/h | **74.7** (100 % above) | 1.42 |
+| Realistic, R inflated ×1.5 σ | 2.29 m | 2.99 m | 0.70° | 0.024 mg | 2.20 °/h | 39.5 (100 % above) | 0.66 |
+
+- With white GNSS noise the filter is **consistent** (slightly conservative: the GM biases
+  are modelled as random walks) and cuts position error **5×** relative to raw GNSS.
+  Accelerometer biases are estimated to ~0.02 mg against a 0.3 mg turn-on spread.
+- With **time-correlated GNSS error** the filter follows the slow error instead of averaging
+  it: accuracy gain drops to 1.3× and it becomes **~10× overconfident** (NEES 75 vs 8)
+  while the **NIS looks normal or even low** (1.4). Innovation monitoring cannot see a slow,
+  smooth error — the same blind spot a slow-drift (meaconing) spoofer exploits.
+- Inflating R, the usual engineering fix, only halves the NEES; the principled fix is
+  state augmentation with GNSS-error states (not done; see LIMITATIONS).
+- **Observability:** heading σ drops sharply in each turn and grows on straight legs; the
+  gyro bias is learned in steps, only during manoeuvres (`b2_single_run.png`).
+
 ## B – INS/GNSS resilience (Monte Carlo)
 _pending_

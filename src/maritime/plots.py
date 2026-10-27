@@ -366,6 +366,99 @@ def allan_plot(tg, ag, ta, aa, spec, out_png: Path) -> Path:
     return out_png
 
 
+def _shade_manoeuvres(ax, truth, t_min) -> None:
+    """Grey bands where the ship turns or changes speed (heading becomes observable)."""
+    k = (np.abs(truth.w) > 1e-5) | (np.abs(truth.f_b[:, 0]) > 1e-5)
+    edges = np.flatnonzero(np.diff(k.astype(int)))
+    starts = list(edges[::2] + 1) if k[0] == 0 else [0, *list(edges[1::2] + 1)]
+    ends = list(edges[1::2] + 1) if k[0] == 0 else list(edges[::2] + 1)
+    for a, b in zip(starts, ends + [len(k) - 1] * (len(starts) - len(ends)), strict=False):
+        ax.axvspan(truth.t[a] / 60, truth.t[b] / 60, color="0.85", zorder=0)
+
+
+def ekf_single_run_plot(truth, mc: dict, out_png: Path) -> Path:
+    """One Monte Carlo run: errors against the filter's own +-3 sigma, and bias estimates."""
+    plt = _plt()
+    log, imu, err, sig = mc["log"], mc["imu"], mc["err"][0], mc["sig"][0]
+    t = log.t / 60
+    fig, ax = plt.subplots(2, 2, figsize=(14, 8), sharex=True)
+    for i, (name, c) in enumerate((("north", "tab:blue"), ("east", "tab:orange"))):
+        ax[0, 0].plot(t, err[:, i], color=c, lw=0.8, label=f"{name} error")
+        ax[0, 0].plot(t, 3 * sig[:, i], color=c, lw=0.6, ls="--")
+        ax[0, 0].plot(t, -3 * sig[:, i], color=c, lw=0.6, ls="--")
+    ax[0, 0].set_ylabel("position error [m]")
+    ax[0, 0].set_title("Position error and filter +-3 sigma (dashed)")
+    ax[0, 0].legend(fontsize=8)
+
+    _shade_manoeuvres(ax[0, 1], truth, t)
+    ax[0, 1].plot(t, np.degrees(err[:, 4]), "k", lw=0.8, label="heading error")
+    ax[0, 1].plot(t, 3 * np.degrees(sig[:, 4]), "r--", lw=0.8, label="+-3 sigma")
+    ax[0, 1].plot(t, -3 * np.degrees(sig[:, 4]), "r--", lw=0.8)
+    ax[0, 1].set_ylabel("heading error [deg]")
+    ax[0, 1].set_title("Heading: observable only in turns / speed changes (grey)")
+    ax[0, 1].legend(fontsize=8)
+
+    mg = 9.80665e-3
+    k = log.idx
+    for i, c in enumerate(("tab:blue", "tab:orange")):
+        ax[1, 0].plot(t, imu.accel_bias[k, i] / mg, color=c, lw=1.5, alpha=0.5,
+                      label=f"true accel bias {'xy'[i]}")
+        ax[1, 0].plot(t, log.b_a[:, i] / mg, color=c, lw=1, ls="--",
+                      label=f"estimated {'xy'[i]}")
+    ax[1, 0].set_ylabel("accelerometer bias [mg]")
+    ax[1, 0].set_xlabel("time [min]")
+    ax[1, 0].legend(fontsize=8)
+    ax[1, 0].set_title("Accelerometer bias estimation")
+
+    dph = np.pi / 180 / 3600
+    _shade_manoeuvres(ax[1, 1], truth, t)
+    ax[1, 1].plot(t, imu.gyro_bias[k] / dph, "k", lw=1.5, alpha=0.5, label="true gyro bias")
+    ax[1, 1].plot(t, log.b_g / dph, "r--", lw=1, label="estimated")
+    ax[1, 1].set_ylabel("gyro bias [deg/h]")
+    ax[1, 1].set_xlabel("time [min]")
+    ax[1, 1].legend(fontsize=8)
+    ax[1, 1].set_title("Gyro bias estimation (learned mainly during manoeuvres)")
+    for a in ax.flat:
+        a.grid(alpha=0.3)
+    fig.suptitle("Loosely coupled INS/GNSS EKF, tactical MEMS IMU, realistic GNSS (one run)")
+    fig.tight_layout()
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=150)
+    plt.close(fig)
+    return out_png
+
+
+def ekf_consistency_plot(truth, mcs: dict, settle: int, out_png: Path) -> Path:
+    """Monte Carlo average NEES and NIS per experiment against the 95 % chi-square band."""
+    from scipy.stats import chi2
+
+    plt = _plt()
+    colors = ["tab:green", "tab:red", "tab:blue"]
+    fig, ax = plt.subplots(1, 2, figsize=(14, 5), sharex=True)
+    for (name, mc), c in zip(mcs.items(), colors, strict=False):
+        t = mc["log"].t / 60
+        ax[0].plot(t, mc["nees"].mean(axis=0), color=c, lw=1, label=name)
+        ax[1].plot(t, mc["nis"].mean(axis=0), color=c, lw=1, label=name)
+    runs = next(iter(mcs.values()))["nees"].shape[0]
+    for a, dim, label in ((ax[0], 8, "NEES (8 states)"), (ax[1], 2, "NIS (2-D GNSS)")):
+        lo, hi = chi2.ppf([0.025, 0.975], runs * dim) / runs
+        a.axhspan(lo, hi, color="0.85", label=f"95 % band, {runs} runs")
+        a.axhline(dim, color="k", lw=0.8, ls=":")
+        a.axvline(settle / 60, color="k", lw=0.5)
+        a.set_yscale("log")
+        a.set_xlabel("time [min]")
+        a.set_ylabel(f"Monte Carlo average {label.split()[0]}")
+        a.set_title(f"Average {label}")
+        a.grid(which="both", alpha=0.3)
+        a.legend(fontsize=8)
+    fig.suptitle("Filter consistency: white GNSS noise vs realistic (time-correlated) GNSS")
+    fig.tight_layout()
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=150)
+    plt.close(fig)
+    return out_png
+
+
 def gap_category_chart(gaps: pl.DataFrame, out_png: Path) -> Path:
     """Left: why gaps were explained away. Right: duration distribution of dark gaps."""
     plt = _plt()

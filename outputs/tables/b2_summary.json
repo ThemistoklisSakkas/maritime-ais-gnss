@@ -1,0 +1,43 @@
+{
+  "imu_grade": "tactical",
+  "runs_per_experiment": 30,
+  "settle_s": 600,
+  "experiments": {
+    "white_gnss": {
+      "pos_rms_m": 0.59,
+      "raw_gnss_rms_m": 2.99,
+      "heading_rms_deg": 0.527,
+      "accel_bias_rms_mg": 0.0158,
+      "gyro_bias_rms_dph": 1.963,
+      "avg_nees": 6.76,
+      "nees_epochs_above_band_pct": 0.0,
+      "nees_epochs_in_band_pct": 57.6,
+      "avg_nis": 1.98,
+      "nis_epochs_in_band_pct": 95.3
+    },
+    "realistic_gnss": {
+      "pos_rms_m": 2.31,
+      "raw_gnss_rms_m": 2.99,
+      "heading_rms_deg": 0.781,
+      "accel_bias_rms_mg": 0.0274,
+      "gyro_bias_rms_dph": 2.423,
+      "avg_nees": 74.73,
+      "nees_epochs_above_band_pct": 100.0,
+      "nees_epochs_in_band_pct": 0.0,
+      "avg_nis": 1.42,
+      "nis_epochs_in_band_pct": 59.3
+    },
+    "realistic_gnss_inflated_R": {
+      "pos_rms_m": 2.29,
+      "raw_gnss_rms_m": 2.99,
+      "heading_rms_deg": 0.699,
+      "accel_bias_rms_mg": 0.0235,
+      "gyro_bias_rms_dph": 2.203,
+      "avg_nees": 39.47,
+      "nees_epochs_above_band_pct": 100.0,
+      "nees_epochs_in_band_pct": 0.0,
+      "avg_nis": 0.66,
+      "nis_epochs_in_band_pct": 0.0
+    }
+  }
+}

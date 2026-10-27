@@ -109,3 +109,16 @@ Known caveats, added as each phase is built.
   constant-rate. Real ship IMUs see much richer, noisier dynamics.
 - GNSS is simulated as position only with white + Gauss-Markov errors; no satellite
   geometry (DOP), no outliers, no receiver clock or velocity outputs.
+- **The EKF assumes white GNSS noise.** With realistic time-correlated GNSS error
+  (τ = 60 s) it becomes strongly overconfident: Monte Carlo NEES ~75 vs 8, and the
+  estimate follows the slow GNSS error instead of averaging it out. Inflating R (×1.5 σ)
+  only halves the NEES. The principled fix is to augment the state with two Gauss-Markov
+  GNSS-error states (10-state filter) or to use a Schmidt-Kalman "consider" formulation; not
+  done here to keep the agreed 8-state design. Consequence for B4: chi-square thresholds
+  derived for white noise do not hold, so detection thresholds are calibrated empirically
+  on attack-free Monte Carlo runs.
+- NIS cannot reveal this mismatch: with correlated GNSS error the average NIS is *below* its
+  expected value (1.4 vs 2) while NEES is ~10× too high. Innovation monitoring sees only
+  what disagrees with the filter's own prediction — the same blind spot a slow spoofer uses.
+- Loosely coupled, position-only: heading is unobservable on straight constant-speed legs
+  (no gyrocompass or GNSS-heading aiding modelled), so its uncertainty grows between turns.

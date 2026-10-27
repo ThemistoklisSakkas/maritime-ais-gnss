@@ -9,6 +9,7 @@ import numpy as np
 import polars as pl
 
 from maritime.config import Config
+from maritime.nav.ekf import EKFParams, error_states, nees, run_ekf
 from maritime.nav.ins import free_inertial_batch
 from maritime.nav.sensors import (
     GNSSSpec,
@@ -96,4 +97,100 @@ def run_b1(cfg: Config) -> None:
     }
     (tables / "b1_summary.json").write_text(json.dumps(summary, indent=2))
     _log(f"summary: {json.dumps(summary, indent=2)}")
+    _log(f"figures in {figs}")
+
+
+# ---------------------------------------------------------------- B2
+
+def ekf_params(cfg: Config, imu: IMUSpec, gnss: GNSSSpec, sigma_scale: float | None = None
+               ) -> EKFParams:
+    d = dict(cfg.section("ekf"))
+    if sigma_scale is not None:
+        d["gnss_sigma_scale"] = sigma_scale
+    return EKFParams.from_specs(imu, gnss, d)
+
+
+def monte_carlo_ekf(truth: Truth, imu_spec: IMUSpec, gnss_spec: GNSSSpec, params: EKFParams,
+                    runs: int, seed: int) -> dict:
+    """Run the EKF `runs` times; return per-run errors, NEES, NIS, sigmas and raw GNSS error."""
+    out = {"err": [], "nees": [], "nis": [], "sig": [], "gnss_err": [], "log": None}
+    for r in range(runs):
+        rng = np.random.default_rng(seed + r)
+        imu = simulate_imu(truth, imu_spec, rng)
+        gnss = simulate_gnss(truth, gnss_spec, rng)
+        log = run_ekf(truth, imu, gnss.t, gnss.idx, gnss.p, params, rng)
+        err = error_states(log, truth, imu)
+        out["err"].append(err)
+        out["nees"].append(nees(err, log.P))
+        out["nis"].append(log.nis)
+        out["sig"].append(np.sqrt(log.P_diag))
+        out["gnss_err"].append(gnss.p - truth.p[gnss.idx])
+        if r == 0:
+            out["log"], out["imu"] = log, imu
+    for k in ("err", "nees", "nis", "sig", "gnss_err"):
+        out[k] = np.stack(out[k])
+    return out
+
+
+def summarize_mc(mc: dict, settle: int, n_states: int) -> dict:
+    from scipy.stats import chi2
+
+    runs = mc["nees"].shape[0]
+    e = mc["err"][:, settle:]
+    horiz = np.sqrt(np.sum(e[..., 0:2] ** 2, axis=-1))
+    raw = np.sqrt(np.sum(mc["gnss_err"][:, settle:] ** 2, axis=-1))
+    avg_nees = mc["nees"][:, settle:].mean(axis=0)
+    avg_nis = mc["nis"][:, settle:].mean(axis=0)
+    lo, hi = chi2.ppf([0.025, 0.975], runs * n_states) / runs
+    lo2, hi2 = chi2.ppf([0.025, 0.975], runs * 2) / runs
+    return {
+        "pos_rms_m": round(float(np.sqrt(np.mean(horiz ** 2))), 2),
+        "raw_gnss_rms_m": round(float(np.sqrt(np.mean(raw ** 2))), 2),
+        "heading_rms_deg": round(float(np.degrees(np.sqrt(np.mean(e[..., 4] ** 2)))), 3),
+        "accel_bias_rms_mg": round(float(np.sqrt(np.mean(e[..., 5:7] ** 2)) / 9.80665e-3), 4),
+        "gyro_bias_rms_dph": round(float(np.sqrt(np.mean(e[..., 7] ** 2))
+                                         / (np.pi / 180 / 3600)), 3),
+        "avg_nees": round(float(avg_nees.mean()), 2),
+        "nees_epochs_above_band_pct": round(100 * float((avg_nees > hi).mean()), 1),
+        "nees_epochs_in_band_pct": round(100 * float(((avg_nees > lo) & (avg_nees < hi)).mean()),
+                                         1),
+        "avg_nis": round(float(avg_nis.mean()), 2),
+        "nis_epochs_in_band_pct": round(100 * float(((avg_nis > lo2) & (avg_nis < hi2)).mean()),
+                                        1),
+    }
+
+
+def run_b2(cfg: Config) -> None:
+    from maritime.plots import ekf_consistency_plot, ekf_single_run_plot
+
+    s, b2 = cfg.section("sim"), cfg.section("b2")
+    tables, figs = cfg.paths.tables, cfg.paths.figures
+    cfg.paths.ensure()
+    truth = scenario_truth(cfg)
+    imu_spec = IMUSpec.from_dict(s["imu_grades"][s["imu_grade"]])
+    base_gnss = s["gnss"]
+    settle = int(b2["settle_s"])
+
+    results, mcs = {}, {}
+    for ex in b2["experiments"]:
+        g = dict(base_gnss)
+        if "gnss_corr_m" in ex:          # same total noise, but all of it white
+            total = GNSSSpec.from_dict(base_gnss).sigma_total_m
+            g["sigma_corr_m"], g["sigma_white_m"] = ex["gnss_corr_m"], total
+        gnss_spec = GNSSSpec.from_dict(g)
+        params = ekf_params(cfg, imu_spec, gnss_spec, ex["gnss_sigma_scale"])
+        t0 = time.perf_counter()
+        mc = monte_carlo_ekf(truth, imu_spec, gnss_spec, params, b2["mc_runs"], cfg.seed)
+        mcs[ex["name"]] = mc
+        results[ex["name"]] = summarize_mc(mc, settle, 8)
+        _log(f"{ex['name']}: {b2['mc_runs']} runs in {time.perf_counter() - t0:.0f} s -> "
+             f"{results[ex['name']]}")
+
+    summary = {"imu_grade": s["imu_grade"], "runs_per_experiment": b2["mc_runs"],
+               "settle_s": settle, "experiments": results}
+    (tables / "b2_summary.json").write_text(json.dumps(summary, indent=2))
+    _log(f"summary: {json.dumps(summary, indent=2)}")
+
+    ekf_single_run_plot(truth, mcs["realistic_gnss"], figs / "b2_single_run.png")
+    ekf_consistency_plot(truth, mcs, settle, figs / "b2_consistency.png")
     _log(f"figures in {figs}")
