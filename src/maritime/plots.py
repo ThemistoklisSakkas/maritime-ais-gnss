@@ -595,6 +595,75 @@ def window_calibration_plot(cal: dict, out_png: Path) -> Path:
     return out_png
 
 
+def detection_curve_plot(rows: list[dict], out_png: Path) -> Path:
+    """Detection probability (95 % Wilson CI) and median delay vs attack size, per IMU grade."""
+    plt = _plt()
+    colors = {"tactical": "tab:red", "navigation": "tab:blue"}
+    fig, ax = plt.subplots(2, 2, figsize=(14, 8.5), sharex="col")
+    for col, kind, xlabel in ((0, "drift", "spoofed drift rate [m/s]"),
+                              (1, "jump", "spoofed jump size [m]")):
+        for grade in sorted({r["grade"] for r in rows if r["attack"] == kind}):
+            pts = sorted((r for r in rows if r["attack"] == kind and r["grade"] == grade),
+                         key=lambda r: r["level"])
+            x = np.array([r["level"] for r in pts])
+            p = np.array([r["p_detect"] for r in pts])
+            lo = p - np.array([r["p_detect_ci95"][0] for r in pts])
+            hi = np.array([r["p_detect_ci95"][1] for r in pts]) - p
+            c = colors.get(grade, "k")
+            ax[0, col].errorbar(x, 100 * p, yerr=100 * np.vstack([lo, hi]), fmt="o-", color=c,
+                                capsize=3, label=f"{grade} IMU ({pts[0]['runs']} runs/point)")
+            d = [r["delay_median_s"] for r in pts]
+            ok = [v is not None for v in d]
+            ax[1, col].plot(x[ok], [v for v in d if v is not None], "s-", color=c, label=grade)
+        ax[0, col].set_ylabel("detected during attack [%]")
+        ax[0, col].set_ylim(-5, 105)
+        ax[0, col].set_title(f"{kind}: probability of detection (95 % CI)")
+        ax[1, col].set_ylabel("median detection delay [s]")
+        ax[1, col].set_xlabel(xlabel)
+        ax[1, col].set_title(f"{kind}: time to detect")
+        for a in ax[:, col]:
+            a.set_xscale("log")
+            a.grid(which="both", alpha=0.3)
+            a.legend(fontsize=8)
+    fig.suptitle("Integrity monitor performance (calibrated per IMU grade, p_fa 1e-4 per test)")
+    fig.tight_layout()
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=150)
+    plt.close(fig)
+    return out_png
+
+
+def error_reduction_plot(rows: list[dict], out_png: Path) -> Path:
+    """Median position error at the end of the attack, unprotected vs protected."""
+    plt = _plt()
+    colors = {"tactical": "tab:red", "navigation": "tab:blue"}
+    fig, ax = plt.subplots(1, 2, figsize=(14, 5.5))
+    for col, kind, xlabel in ((0, "drift", "spoofed drift rate [m/s]"),
+                              (1, "jump", "spoofed jump size [m]")):
+        for grade in sorted({r["grade"] for r in rows if r["attack"] == kind}):
+            pts = sorted((r for r in rows if r["attack"] == kind and r["grade"] == grade),
+                         key=lambda r: r["level"])
+            x = [r["level"] for r in pts]
+            c = colors.get(grade, "k")
+            ax[col].plot(x, [r["err_end_unprotected_m"] for r in pts], "--", color=c, alpha=0.6,
+                         label=f"{grade}: unprotected")
+            ax[col].plot(x, [r["err_end_protected_m"] for r in pts], "o-", color=c,
+                         label=f"{grade}: protected")
+        ax[col].set_xscale("log")
+        ax[col].set_yscale("log")
+        ax[col].set_xlabel(xlabel)
+        ax[col].set_ylabel("median position error at end of 15-min attack [m]")
+        ax[col].set_title(kind)
+        ax[col].grid(which="both", alpha=0.3)
+        ax[col].legend(fontsize=8)
+    fig.suptitle("What the integrity monitor saves: error at the end of the attack")
+    fig.tight_layout()
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_png, dpi=150)
+    plt.close(fig)
+    return out_png
+
+
 def gap_category_chart(gaps: pl.DataFrame, out_png: Path) -> Path:
     """Left: why gaps were explained away. Right: duration distribution of dark gaps."""
     plt = _plt()

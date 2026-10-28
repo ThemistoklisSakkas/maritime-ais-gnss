@@ -23,7 +23,8 @@ GNSS = GNSSSpec(rate_hz=1, sigma_white_m=1.5, sigma_corr_m=1.5, tau_corr_s=60)
 LOG = SpeedLogSpec(rate_hz=1, sigma_mps=0.05, scale_factor_ppm=5000)
 INIT = {"init_sigma_pos_m": 3.0, "init_sigma_vel_mps": 0.3, "init_sigma_heading_deg": 1.0}
 MON = {"gate": 13.8, "n_reject": 3, "window_s": 120, "spawn_s": 30, "n_reaccept": 10,
-       "reaccept_max_m": 60, "quarantine_s": 300, "max_coast_s": 600,
+       "reaccept_min_m": 15, "reaccept_sigma_k": 3, "reaccept_max_m": 60,
+       "quarantine_s": 300, "max_coast_s": 1800, "arm_after_s": 600,
        "log_aiding": True, "current_tau_s": 120,
        "sigma_current_mps": 0.05, "sigma_sway_mps": 0.05, "log_sigma_mps": 0.05,
        "log_scale_unc": 0.005}
@@ -58,8 +59,8 @@ def test_calibration_recovers_scale_of_inflated_chi_square():
     rng = np.random.default_rng(0)
     stats = 3.0 * rng.chisquare(2, 20_000)                     # chi2(2) inflated x3
     thr, alpha = calibrate_window_threshold(stats, 1e-3)
-    assert alpha == pytest.approx(3.0, rel=0.03)
-    assert thr == pytest.approx(3.0 * chi2.ppf(0.999, 2), rel=0.03)
+    assert alpha == pytest.approx(3.0, rel=0.05)
+    assert thr == pytest.approx(3.0 * chi2.ppf(0.999, 2), rel=0.05)
 
 
 def test_speed_log_aiding_pulls_velocity_back():

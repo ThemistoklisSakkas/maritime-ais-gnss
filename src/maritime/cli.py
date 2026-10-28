@@ -78,6 +78,12 @@ def cmd_b4(args: argparse.Namespace) -> None:
     run_b4(load_config(args.config))
 
 
+def cmd_b5(args: argparse.Namespace) -> None:
+    from maritime.nav.montecarlo import run_b5
+
+    run_b5(load_config(args.config))
+
+
 def main(argv: list[str] | None = None) -> None:
     # Windows consoles default to cp1252, which cannot print polars' table borders
     sys.stdout.reconfigure(encoding="utf-8")
@@ -108,6 +114,8 @@ def main(argv: list[str] | None = None) -> None:
        .set_defaults(func=cmd_b3)
     sub.add_parser("b4", help="integrity monitoring: calibrate, detect, protect") \
        .set_defaults(func=cmd_b4)
+    sub.add_parser("b5", help="parallel Monte Carlo: detection curves, false alarms") \
+       .set_defaults(func=cmd_b5)
 
     args = parser.parse_args(argv)
     args.func(args)

@@ -36,5 +36,5 @@ written to `data/` (git-ignored); figures and tables to `outputs/`.
 | B2 | Loosely coupled EKF | done |
 | B3 | Attack injection | done |
 | B4 | Innovation-based detection | done |
-| B5 | Monte Carlo evaluation | – |
+| B5 | Monte Carlo evaluation | done |
 | C | Dashboard | – |

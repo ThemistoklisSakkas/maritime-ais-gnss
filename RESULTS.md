@@ -325,5 +325,47 @@ test; 1 of 2,000 calibration tests (0.05 %) exceeded it.
 - Development findings kept as tests: re-admission without a quarantine let the drifting
   spoofer straight back in; a 10-min timeout re-admitted a 15-min jump spoofer.
 
+## B5 – Monte Carlo evaluation of the integrity monitor
+
+Parallel Monte Carlo (4 worker processes; parallel and serial results verified identical):
+**210 evaluation runs + 40 calibration runs** of the 1-h scenario. Each run executes the
+unprotected and protected filters on identical sensors and initial errors (paired).
+Window threshold calibrated per IMU grade on independent attack-free runs, scale matched at
+the 99th percentile, p_fa = 1e-4 per test. Monitor armed after 10 min. 10 runs per sweep
+point (95 % Wilson intervals in the figure). Output: `outputs/tables/b5_summary.json`,
+`b5_sweeps.csv`, figures `b5_detection_curves.png`, `b5_error_reduction.png`.
+
+| | Tactical MEMS | Navigation FOG |
+|---|---:|---:|
+| Calibrated window threshold (scale α) | 62.9 (3.42) | 44.2 (2.40) |
+| **False alarms, 20 h attack-free** | **0** | **1 (0.05 /h)** |
+| Mean error attack-free, protected vs unprotected | 2.07 vs 2.07 m | 1.91 vs 1.85 m |
+
+**Slow drift (15-min attack): detection probability / median delay / median error at end
+(unprotected → protected)**
+
+| Drift rate | Tactical MEMS | Navigation FOG |
+|---|---|---|
+| 0.05 m/s | 0 % — 45 → 45 m | 10 % — 45 → 45 m |
+| 0.1 m/s | 0 % — 90 → 90 m | 60 %, 120 s — 90 → 89 m |
+| 0.2 m/s | 70 %, 120 s — 180 → 106 m | **100 %, 70 s — 180 → 11 m** |
+| 0.3 m/s | **100 %, 90 s — 270 → 18 m** | 100 %, 39 s — 269 → 12 m |
+| 0.5 m/s | 100 %, 25 s — 450 → 29 m | 100 %, 23 s — 448 → 12 m |
+| 1.0 m/s | 100 %, 13 s — 899 → 19 m | 100 %, 12 s — 897 → 13 m |
+
+**Jumps (tactical MEMS):** 5 m: 10 % detected (inside GNSS noise); **10–180 m: 100 % within
+2 s**. Error at end of attack: 180 m → **24 m**; for 10–50 m jumps no gain (protected ≈
+offset), because the 15-min coasting error is of the same size as the jump.
+
+**Key findings**
+- **IMU grade sets the detection limit:** reliable (100 %) drift detection from **0.3 m/s
+  with a tactical MEMS** vs **0.2 m/s with a navigation-grade FOG**, and the FOG detects
+  ~1.5–2× faster at the same rate (70 vs 120 s at 0.2 m/s; 39 vs 90 s at 0.3 m/s).
+- Above the limit the monitor turns a spoofed offset of 270–900 m into **12–29 m** at the end
+  of a 15-min attack, and the filter is back at ~2–3 m within 5 min of the attack ending.
+- **Grey zone:** spoofed offsets comparable to what the INS + current uncertainty would
+  drift on its own (≲ 50 m in 15 min) are either undetectable or indistinguishable after the
+  quarantine; protection does not pay off there.
+
 ## B – INS/GNSS resilience (Monte Carlo)
-_pending_
+_superseded by B5 above_

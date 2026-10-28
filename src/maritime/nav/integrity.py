@@ -49,9 +49,12 @@ class MonitorParams:
     spawn_s: float              # a new backup every spawn_s seconds
     window_threshold: float     # threshold on T (calibrated)
     n_reaccept: int             # consecutive consistent fixes needed to trust GNSS again
-    reaccept_max_m: float       # ... and each within this distance of the coasting solution
+    reaccept_min_m: float       # ... each within max(min, k * sigma_pos) of the coasting
+    reaccept_sigma_k: float     #     solution, capped at reaccept_max_m
+    reaccept_max_m: float
     quarantine_s: float         # ... and no re-admission at all for this long after a declaration
     max_coast_s: float          # after this long distrusted, re-initialise from GNSS + alert
+    arm_after_s: float          # monitor armed only once the filter has converged
     log_aiding: bool
     current_tau_s: float        # smoothing time constant of the current estimate
     sigma_current_mps: float    # uncertainty of the frozen current, enters the log R
@@ -66,8 +69,11 @@ class MonitorParams:
             spawn_s=float(d["spawn_s"]),
             window_threshold=float(window_threshold if window_threshold is not None
                                    else d.get("window_threshold", np.inf)),
-            n_reaccept=int(d["n_reaccept"]), reaccept_max_m=float(d["reaccept_max_m"]),
+            n_reaccept=int(d["n_reaccept"]), reaccept_min_m=float(d["reaccept_min_m"]),
+            reaccept_sigma_k=float(d["reaccept_sigma_k"]),
+            reaccept_max_m=float(d["reaccept_max_m"]),
             quarantine_s=float(d["quarantine_s"]), max_coast_s=float(d["max_coast_s"]),
+            arm_after_s=float(d["arm_after_s"]),
             log_aiding=bool(d["log_aiding"]), current_tau_s=float(d["current_tau_s"]),
             sigma_current_mps=float(d["sigma_current_mps"]),
             sigma_sway_mps=float(d["sigma_sway_mps"]), log_sigma_mps=float(d["log_sigma_mps"]),
@@ -118,7 +124,7 @@ class IntegrityMonitor:
             accept = self._trusted_epoch(ekf, t, z)
             if accept and u_log is not None:
                 self._update_current(ekf, u_log)
-            if self.trusted and t - self._last_spawn >= p.spawn_s:
+            if self.trusted and t >= p.arm_after_s and t - self._last_spawn >= p.spawn_s:
                 self.backups.append(Backup(ekf.snapshot(), t, self._current_or_zero()))
                 self._last_spawn = t
             return accept, None
@@ -140,12 +146,29 @@ class IntegrityMonitor:
         # straight back in as soon as the coasting uncertainty grows. If the attack continues,
         # the offset leaves the bound during the quarantine; if it has stopped, genuine GNSS
         # agrees with the coasting solution and is re-admitted.
+        # The distance bound follows the coasting uncertainty: an offset the INS can still
+        # rule out stays out; one comparable to the INS error cannot be told apart from it.
+        #
+        # "Consider" term (Schmidt-Kalman idea): the current used by the log aiding is frozen
+        # at its pre-attack estimate, so its error is a CONSTANT velocity bias whose position
+        # effect grows linearly with coasting time. The filter treats the log error as white
+        # noise and averages it away, so its P is far too small (nav grade: sigma 2 m vs 9-34 m
+        # actual error after 15 min). We add the ignored term explicitly to the test.
         res = ekf.innovation(z)
-        in_quarantine = t - self._declared_at() < p.quarantine_s
-        consistent = (not in_quarantine and res.nis <= p.window_threshold
-                      and float(np.linalg.norm(res.nu)) <= p.reaccept_max_m)
+        t_coast = t - self._declared_at()
+        in_quarantine = t_coast < p.quarantine_s
+        consider = (p.sigma_current_mps * t_coast) ** 2 if p.log_aiding else 0.0
+        S_eff = res.S + np.eye(2) * consider
+        nis_eff = float(res.nu @ np.linalg.solve(S_eff, res.nu))
+        sigma = float(np.sqrt(np.linalg.eigvalsh(ekf.P[0:2, 0:2]).max() + consider))
+        bound = min(p.reaccept_max_m, max(p.reaccept_min_m, p.reaccept_sigma_k * sigma))
+        dist = float(np.linalg.norm(res.nu))
+        consistent = not in_quarantine and nis_eff <= p.window_threshold and dist <= bound
         self._n_ok = self._n_ok + 1 if consistent else 0
         if self._n_ok >= p.n_reaccept:
+            # Open the position covariance to the observed offset, so the filter converges
+            # onto GNSS smoothly instead of the gate seeing the residual as a new attack.
+            ekf.P[0:2, 0:2] += np.eye(2) * max(dist ** 2, float(ekf.R[0, 0]))
             self._readmit(t, "consistent")
             return True, None
         # The monitor cannot tell "GNSS is lying" from "my INS has drifted" once both have
@@ -190,7 +213,7 @@ class IntegrityMonitor:
         nis = ekf.innovation(z).nis
         if nis > p.gate:
             self._n_rej += 1
-            if not self.calibrate and self._n_rej >= p.n_reject:
+            if not self.calibrate and t >= p.arm_after_s and self._n_rej >= p.n_reject:
                 self._declare(t, "gate")
             return False
         self._n_rej = 0
@@ -245,12 +268,13 @@ def calibrate_window_threshold(stats: np.ndarray, pfa: float) -> tuple[float, fl
     """Fit a SCALED chi-square(2) to attack-free window statistics and return the threshold
     for the per-test false-alarm probability `pfa`, plus the fitted scale.
 
-    With white noise T ~ chi2(2) (mean 2). Correlated GNSS error and the filter's
-    overconfidence inflate T, roughly by a constant factor alpha = mean(T) / 2. Fitting the
-    scale (rather than taking an empirical quantile) lets us extrapolate to small pfa that a
-    few thousand Monte Carlo tests could never resolve directly.
+    With white noise T ~ chi2(2). Correlated GNSS error and the filter's overconfidence
+    inflate T by a factor alpha. Fitting the scale (rather than taking an empirical quantile)
+    lets us extrapolate to small pfa that a few thousand Monte Carlo tests could never
+    resolve directly. The scale is matched at the 99th PERCENTILE, not the mean: false alarms
+    live in the tail, and for a better IMU the tail is heavier than a mean-matched fit implies.
     """
     from scipy.stats import chi2
 
-    alpha = float(np.mean(stats)) / 2.0
+    alpha = float(np.percentile(stats, 99)) / float(chi2.ppf(0.99, 2))
     return alpha * float(chi2.ppf(1.0 - pfa, 2)), alpha

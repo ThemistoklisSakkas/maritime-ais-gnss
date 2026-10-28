@@ -146,5 +146,22 @@ Known caveats, added as each phase is built.
   ship does not sway; tidal streams turning during a long outage would bias it.
 - Attack timing interacts with the backup schedule: a jump that coincides with a backup
   maturing is caught by the window test in the same second as the gate would catch it.
+- **B5 study design choices:** the monitor is armed 10 min after start (as a real INS after
+  fine alignment), matching the calibration window; without this, a backup spawned before
+  convergence produced a false alarm at t = 5 min. The window threshold is scaled at the 99th
+  percentile of the attack-free statistic (not its mean), because the navigation-grade tail
+  is heavier than a mean-matched χ² predicts (1 false alarm/h before the change, 0 after).
+- **Coasting covariance is overconfident** for the same reason as B2: the frozen current
+  error is a constant bias but enters the log update as white noise (navigation grade: σ 2 m
+  vs 9–34 m actual after 15 min). Re-admission therefore adds an explicit "consider" term
+  (σ_current × coasting time), the Schmidt–Kalman idea, instead of trusting P. Estimating
+  the current as filter states would be the principled fix.
+- **Grey zone:** offsets comparable to the coasting uncertainty (≈ 10–50 m after several
+  minutes) cannot be told apart from INS/current error. Small jumps (10–20 m) and very slow
+  drifts (≤ 0.1 m/s) are detected but re-admitted after the quarantine, so protection buys
+  little against them; it pays off when the spoofed offset exceeds what the INS would drift.
+- Monte Carlo sample sizes (10 runs per sweep point, 20 h attack-free per grade) give wide
+  confidence intervals (shown as 95 % Wilson intervals); a false-alarm rate of 0 in 20 h only
+  bounds it below ~0.15/h at 95 % confidence.
 - Loosely coupled, position-only: heading is unobservable on straight constant-speed legs
   (no gyrocompass or GNSS-heading aiding modelled), so its uncertainty grows between turns.
