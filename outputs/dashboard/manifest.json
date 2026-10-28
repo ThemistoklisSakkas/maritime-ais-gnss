@@ -1,0 +1,20 @@
+{
+  "rows": {
+    "dark_gaps": 2268,
+    "encounters": 2534,
+    "interference_cells": 18260,
+    "eta_samples": 4628
+  },
+  "source_tables": [
+    "a1_trajectories.json",
+    "a2_summary.json",
+    "a3_summary.json",
+    "a4_summary.json",
+    "a5_summary.json",
+    "b1_summary.json",
+    "b2_summary.json",
+    "b3_summary.json",
+    "b4_summary.json",
+    "b5_summary.json"
+  ]
+}

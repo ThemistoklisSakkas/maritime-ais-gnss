@@ -84,6 +84,12 @@ def cmd_b5(args: argparse.Namespace) -> None:
     run_b5(load_config(args.config))
 
 
+def cmd_dashboard_data(args: argparse.Namespace) -> None:
+    from maritime.dashboard_data import export_dashboard_data
+
+    print(export_dashboard_data(load_config(args.config)))
+
+
 def main(argv: list[str] | None = None) -> None:
     # Windows consoles default to cp1252, which cannot print polars' table borders
     sys.stdout.reconfigure(encoding="utf-8")
@@ -116,6 +122,8 @@ def main(argv: list[str] | None = None) -> None:
        .set_defaults(func=cmd_b4)
     sub.add_parser("b5", help="parallel Monte Carlo: detection curves, false alarms") \
        .set_defaults(func=cmd_b5)
+    sub.add_parser("dashboard-data", help="export the small data bundle for the dashboard") \
+       .set_defaults(func=cmd_dashboard_data)
 
     args = parser.parse_args(argv)
     args.func(args)
