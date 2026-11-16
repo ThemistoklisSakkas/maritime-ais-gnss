@@ -15,7 +15,9 @@ All numbers below are reproducible from [config/default.yaml](config/default.yam
 seeds) and are listed in full in [RESULTS.md](RESULTS.md). Every known caveat is in
 [LIMITATIONS.md](LIMITATIONS.md).
 
-![GNSS interference indicators over time](outputs/figures/a4_interference_timeseries.png)
+![Part A: GNSS jamming around Bornholm in real AIS data. Part B: spoofing error with and without the integrity monitor](outputs/figures/00_hero.png)
+
+<!-- Demo video (2 min): add the link here once uploaded -->
 
 ## Key results
 
