@@ -124,3 +124,7 @@ Full list: [LIMITATIONS.md](LIMITATIONS.md).
 - Ports: NGA World Port Index (Pub. 150). Land: [Natural Earth](https://www.naturalearthdata.com/) 1:10M.
 - Built by Themistoklis Sakkas (naval navigation background; MSc Guided Weapon Systems,
   Cranfield; MSc Shipping, University of the Aegean).
+
+## License
+
+Code released under the [MIT License](LICENSE). AIS data, the World Port Index and Natural Earth remain under their own terms.
