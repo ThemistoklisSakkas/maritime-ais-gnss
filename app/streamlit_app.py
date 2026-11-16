@@ -120,7 +120,7 @@ def page_dark() -> None:
     v = g.filter(pl.col("ship_type").is_in(sel) & (pl.col("gap_h") >= min_h))
     if moved:
         v = v.filter(pl.col("moved_while_dark"))
-    st.write(f"**{v.height}** gaps from **{v['mmsi'].n_unique()}** vessels")
+    st.write(f"**{v.height}** gaps from **{v['vessel'].n_unique()}** vessels")
     d = to_pd(v.with_columns(pl.col("gap_h").round(1), pl.col("gap_dist_nm").round(1)))
     deck([
         pdk.Layer("LineLayer", d, get_source_position=["start_lon", "start_lat"],
@@ -129,7 +129,7 @@ def page_dark() -> None:
         pdk.Layer("ScatterplotLayer", d, get_position=["start_lon", "start_lat"],
                   get_fill_color=[200, 30, 30, 200], get_radius=900, radius_min_pixels=4,
                   pickable=True),
-    ], {"text": "{name} ({ship_type})\nsilent {gap_h} h, moved {gap_dist_nm} NM\n"
+    ], {"text": "{vessel} ({ship_type})\nsilent {gap_h} h, moved {gap_dist_nm} NM\n"
                 "from {gap_start}"})
     st.dataframe(d.sort_values("gap_h", ascending=False), use_container_width=True,
                  hide_index=True)
@@ -157,7 +157,7 @@ def page_sts() -> None:
                              radius=pl.col("duration_h") * 400 + 800))
     deck([pdk.Layer("ScatterplotLayer", d, get_position=["lon", "lat"], get_radius="radius",
                     radius_min_pixels=4, get_fill_color=[30, 90, 200, 170], pickable=True)],
-         {"text": "{name_a} ({ship_type_a}) + {name_b} ({ship_type_b})\n"
+         {"text": "{vessel_a} ({ship_type_a}) + {vessel_b} ({ship_type_b})\n"
                   "{duration_h} h at {mean_dist_m} m, from {start}"})
     st.dataframe(d.drop(columns=["radius"]).sort_values("duration_h", ascending=False),
                  use_container_width=True, hide_index=True)
@@ -210,10 +210,10 @@ def page_eta() -> None:
                 "The ECDIS route-based ETA is not transmitted by AIS.")
     eta = table("eta_test")
     voyages = (eta.group_by("arrival_id")
-                  .agg(pl.first("port_name"), pl.first("mmsi"), pl.max("target_h"),
+                  .agg(pl.first("port_name"), pl.first("vessel"), pl.max("target_h"),
                        pl.col("crew_h").is_not_null().any().alias("has_crew"))
                   .sort("target_h", descending=True))
-    labels = {r["arrival_id"]: f"{r['port_name']} - MMSI {r['mmsi']} - "
+    labels = {r["arrival_id"]: f"{r['port_name']} - {r['vessel']} - "
                                f"{r['target_h']:.0f} h run-in"
                                + (" - with AIS ETA" if r["has_crew"] else "")
               for r in voyages.iter_rows(named=True)}

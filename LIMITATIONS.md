@@ -7,6 +7,9 @@ Known caveats, added as each phase is built.
   static fields (name, type, destination, ETA) are typed by the crew and are often stale or wrong.
 - Terrestrial reception only (DMA shore stations): coverage drops with range from the Danish coast,
   so a "gap" can be a reception artefact rather than a transponder switch-off.
+- Published tables, figures and the dashboard identify vessels only by a keyed pseudonym
+  (`V-XXXXXX`, `src/maritime/anonymize.py`); names and MMSIs stay in the local, git-ignored data.
+  A flagged gap or encounter is a lead for an analyst, not evidence against a vessel.
 
 ## A1 – Ingestion & cleaning
 - Timestamps are the shore base-station receive time (assumed UTC), not the GNSS time of the fix.

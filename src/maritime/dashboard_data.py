@@ -11,6 +11,7 @@ import json
 
 import polars as pl
 
+from maritime.anonymize import load_key, pseudonymize
 from maritime.config import Config
 
 
@@ -20,18 +21,20 @@ def export_dashboard_data(cfg: Config) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     c = pl.col
     sizes = {}
+    key = load_key(cfg)
 
     gaps = pl.read_parquet(proc / "dark" / "gaps.parquet").filter(c("category") == "dark")
-    gaps.select("mmsi", "name", "ship_type", "gap_start", "gap_end", "gap_h", "start_lat",
-                "start_lon", "end_lat", "end_lon", "gap_dist_nm", "sog_before_kn",
-                "sog_after_kn", "moved_while_dark").write_parquet(out / "dark_gaps.parquet")
+    pseudonymize(gaps.select("mmsi", "ship_type", "gap_start", "gap_end", "gap_h", "start_lat",
+                             "start_lon", "end_lat", "end_lon", "gap_dist_nm", "sog_before_kn",
+                             "sog_after_kn", "moved_while_dark"), key) \
+        .write_parquet(out / "dark_gaps.parquet")
     sizes["dark_gaps"] = gaps.height
 
     enc = pl.read_parquet(proc / "sts" / "encounters_coast.parquet")
-    enc.select("mmsi_a", "name_a", "ship_type_a", "mmsi_b", "name_b", "ship_type_b", "start",
-               "end", "duration_h", "mean_dist_m", "min_dist_m", "lat", "lon", "pair_class",
-               "dark_nearby", "dist_to_land_m", "near_coast") \
-       .write_parquet(out / "encounters.parquet")
+    pseudonymize(enc.select("mmsi_a", "ship_type_a", "mmsi_b", "ship_type_b", "start", "end",
+                            "duration_h", "mean_dist_m", "min_dist_m", "lat", "lon",
+                            "pair_class", "dark_nearby", "dist_to_land_m", "near_coast"), key) \
+        .write_parquet(out / "encounters.parquet")
     sizes["encounters"] = enc.height
 
     cell = float(cfg.section("interference")["cell_deg"])
@@ -47,7 +50,7 @@ def export_dashboard_data(cfg: Config) -> dict:
              .select("arrival_id", "mmsi", "port_name", "arrival", "t", "target_h",
                      "baseline_h", "model_h", "crew_h", "dist_nm", "sog_kn", "lat", "lon",
                      "port_lat", "port_lon", "destination"))
-    eta.write_parquet(out / "eta_test.parquet")
+    pseudonymize(eta, key).write_parquet(out / "eta_test.parquet")
     sizes["eta_samples"] = eta.height
 
     (out / "manifest.json").write_text(json.dumps(

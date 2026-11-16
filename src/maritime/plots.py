@@ -121,8 +121,8 @@ def encounter_detail(tracks: pl.DataFrame, enc: dict, out_png: Path) -> Path:
     ta = tracks.filter(pl.col("mmsi") == a).sort("ts")
     tb = tracks.filter(pl.col("mmsi") == b).sort("ts")
     fig, ax = plt.subplots(1, 2, figsize=(14, 6))
-    for t, color, label in ((ta, "tab:red", f"{enc.get('name_a')} ({enc.get('ship_type_a')})"),
-                            (tb, "tab:blue", f"{enc.get('name_b')} ({enc.get('ship_type_b')})")):
+    for t, color, label in ((ta, "tab:red", f"{enc.get('label_a')} ({enc.get('ship_type_a')})"),
+                            (tb, "tab:blue", f"{enc.get('label_b')} ({enc.get('ship_type_b')})")):
         ax[0].plot(t["lon"], t["lat"], "-", color=color, lw=1, label=label)
         ax[0].plot(t["lon"][0], t["lat"][0], "o", color=color, ms=5)
     ax[0].plot(enc["lon"], enc["lat"], "k*", ms=14, label="encounter centre")

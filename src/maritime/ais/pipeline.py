@@ -63,6 +63,7 @@ from maritime.ais.gnss_anomaly import (
 )
 from maritime.ais.trajectories import build_trajectories
 from maritime.ais.vessels import vessel_registry
+from maritime.anonymize import load_key, pseudonym, pseudonymize
 from maritime.config import Config
 from maritime.plots import (
     dark_gap_map,
@@ -205,7 +206,7 @@ def run_a2(cfg: Config) -> None:
                    "gap_h", "start_lat",
                    "start_lon", "end_lat", "end_lon", "gap_dist_nm", "implied_speed_kn",
                    "sog_before_kn", "sog_after_kn", "coverage_start", "coverage_end"))
-    top.head(50).write_csv(cfg.paths.tables / "a2_dark_gaps_top.csv")
+    pseudonymize(top.head(50), load_key(cfg)).write_csv(cfg.paths.tables / "a2_dark_gaps_top.csv")
 
     figs = cfg.paths.figures
     dark_gap_map(dark, coverage, dp.coverage_cell_deg, cfg.aoi["full"],
@@ -294,7 +295,8 @@ def run_a3(cfg: Config) -> None:
             "ship_type_b", "start", "end", "duration_h", "mean_dist_m", "min_dist_m",
             "lat", "lon"]
     focus_ep = ep.filter(pl.col("pair_class").str.starts_with("cargo_tanker"))
-    (focus_ep.sort(["dark_nearby", "duration_h"], descending=True).select(cols)
+    key = load_key(cfg)
+    (pseudonymize(focus_ep.sort(["dark_nearby", "duration_h"], descending=True).select(cols), key)
      .write_csv(cfg.paths.tables / "a3_encounters_cargo_tanker.csv"))
 
     figs = cfg.paths.figures
@@ -306,6 +308,7 @@ def run_a3(cfg: Config) -> None:
     example = focus_ep.filter(pl.col("duration_h") <= cfg.section("sts")["example_max_h"])
     if example.height:
         top = example.sort(["dark_nearby", "duration_h"], descending=True).row(0, named=True)
+        top |= {"label_a": pseudonym(top["mmsi_a"], key), "label_b": pseudonym(top["mmsi_b"], key)}
         w = timedelta(hours=3)
         tracks = pl.concat([
             pl.scan_parquet(f).filter(pl.col("mmsi").is_in([top["mmsi_a"], top["mmsi_b"]])
@@ -413,10 +416,12 @@ def run_a4(cfg: Config) -> None:
     }
     (tables / "a4_summary.json").write_text(json.dumps(summary, indent=2))
     _log(f"summary: {json.dumps(summary, indent=2)}")
-    (focus_enc.select("pair_class", "name_a", "name_b", "start", "duration_h", "lat", "lon",
-                      "dist_to_land_m", "near_coast").sort("dist_to_land_m")
+    key = load_key(cfg)
+    (pseudonymize(focus_enc.select("pair_class", "mmsi_a", "mmsi_b", "start", "duration_h",
+                                   "lat", "lon", "dist_to_land_m", "near_coast")
+                  .sort("dist_to_land_m"), key)
      .write_csv(tables / "a4_a3_cargo_tanker_coast_check.csv"))
-    (circles.filter(c("unexpected")).sort("ts")
+    (pseudonymize(circles.filter(c("unexpected")).sort("ts"), key)
      .write_csv(tables / "a4_circles_unexpected_types.csv"))
 
     coverage = pl.read_parquet(proc / "coverage.parquet")

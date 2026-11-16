@@ -120,7 +120,8 @@ Full list: [LIMITATIONS.md](LIMITATIONS.md).
 
 ## Data and credits
 
-- AIS: [Danish Maritime Authority](http://aisdata.ais.dk/) daily files.
+- AIS: [Danish Maritime Authority](http://aisdata.ais.dk/) daily files. Vessels appear in the
+  published outputs only as keyed pseudonyms (`V-XXXXXX`), never by name or MMSI.
 - Ports: NGA World Port Index (Pub. 150). Land: [Natural Earth](https://www.naturalearthdata.com/) 1:10M.
 - Built by Themistoklis Sakkas (naval navigation background; MSc Guided Weapon Systems,
   Cranfield; MSc Shipping, University of the Aegean).
